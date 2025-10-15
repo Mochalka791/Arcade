@@ -26,8 +26,8 @@
                     <div class="row">
                         @for (var c = 0; c < BoardWidth; c++)
                         {
-                            var cell = GetCellState(r, c);
-                            <div class="cell @cell.Class" style="background:@cell.Color"></div>
+                            <div class="cell @(GetCellState(r, c).Class)"
+                                 style="background:@(GetCellState(r, c).Color)"></div>
                         }
                     </div>
                 }
@@ -65,10 +65,9 @@
                         <div class="row">
                             @for (var c = 0; c < 4; c++)
                             {
-                                var fill = _nextPreview[r, c];
-                                <div class="cell" style="background:@fill"></div>
+                                <div class="cell" style="background:@(_nextPreview[r, c])"></div>
                             }
-                        }
+                        </div>
                     }
                 </div>
             </div>
@@ -357,7 +356,7 @@
                 {
                     _board[0, col] = null;
                 }
-                r++; // re-check the same row index after collapse
+                r++; // re-check collapsed row
             }
         }
 
@@ -445,18 +444,18 @@
     private void UpdatePreview()
     {
         Array.Clear(_nextPreview, 0, _nextPreview.Length);
-        if (_nextPiece is null)
-        {
-            return;
-        }
 
-        foreach (var offset in _nextPiece.Rotations[0])
+        var def = _nextPiece;          // TetrominoDefinition?
+        if (def is null)
+            return;
+
+        foreach (var offset in def.Value.Rotations[0])
         {
             var r = offset.r + 1;
             var c = offset.c + 1;
             if (r >= 0 && r < 4 && c >= 0 && c < 4)
             {
-                _nextPreview[r, c] = _nextPiece.Color;
+                _nextPreview[r, c] = def.Value.Color;
             }
         }
     }
