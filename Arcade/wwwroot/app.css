@@ -3,6 +3,12 @@
     --background-color: #040b1d;
     --text-primary: #e9f1ff;
     --text-secondary: rgba(233, 241, 255, 0.7);
+    --cursor-x: 50vw;
+    --cursor-y: 50vh;
+    --cursor-glow-opacity: 0.55;
+    --cursor-parallax-x: 0px;
+    --cursor-parallax-y: 0px;
+    --star-layer-one-speed: 140s;
 }
 
 * {
@@ -29,12 +35,26 @@ body::before {
     inset: 0;
     z-index: -2;
     pointer-events: none;
-    background-image: radial-gradient(1px 1px at 20px 20px, rgba(255, 255, 255, 0.18), transparent 65%),
-                      radial-gradient(1px 1px at 80px 120px, rgba(255, 255, 255, 0.12), transparent 65%),
-                      radial-gradient(1px 1px at 220px 50px, rgba(255, 255, 255, 0.15), transparent 65%),
-                      radial-gradient(450px 450px at 75% -10%, rgba(52, 104, 255, 0.28), transparent 70%),
-                      radial-gradient(550px 550px at 10% 10%, rgba(52, 255, 206, 0.18), transparent 75%);
     background-color: var(--background-color);
+    background-image: radial-gradient(1px 1px at calc(24px + var(--cursor-parallax-x)) calc(24px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.2), transparent 60%),
+                      radial-gradient(1px 1px at calc(120px - var(--cursor-parallax-x)) calc(160px - var(--cursor-parallax-y)), rgba(255, 255, 255, 0.13), transparent 65%),
+                      radial-gradient(1px 1px at calc(260px + var(--cursor-parallax-x)) calc(90px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.16), transparent 65%),
+                      radial-gradient(420px 420px at 75% -10%, rgba(52, 104, 255, 0.25), transparent 70%),
+                      radial-gradient(520px 520px at 10% 15%, rgba(52, 255, 206, 0.18), transparent 75%);
+    background-size: 320px 320px, 420px 420px, 560px 560px, 100% 100%, 100% 100%;
+    animation: star-drift var(--star-layer-one-speed) linear infinite;
+    will-change: background-position;
+}
+
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(520px 520px at var(--cursor-x) var(--cursor-y), rgba(46, 102, 255, var(--cursor-glow-opacity)), transparent 70%);
+    transition: opacity 0.3s ease;
+    opacity: 0.85;
 }
 
 a {
@@ -85,5 +105,19 @@ textarea {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
+    }
+
+    body::after {
+        opacity: 0.45;
+    }
+}
+
+@keyframes star-drift {
+    0% {
+        background-position: 0 0, 0 0, 0 0, 0 0, 0 0;
+    }
+
+    100% {
+        background-position: 240px 320px, -320px 240px, 420px -360px, 0 0, 0 0;
     }
 }

@@ -74,8 +74,8 @@
 
 .layout__main {
     flex: 1;
-    width: min(1200px, 92vw);
-    margin: clamp(2.5rem, 7vw, 4.5rem) auto 0;
+    width: min(1120px, 92vw);
+    margin: clamp(3rem, 8vw, 4.8rem) auto clamp(3rem, 10vw, 5.4rem);
 }
 
 #blazor-error-ui {

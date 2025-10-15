@@ -30,31 +30,38 @@
 
 .game-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: clamp(1.5rem, 4vw, 2.25rem);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1.6rem, 4.5vw, 2.4rem);
+    align-items: stretch;
 }
 
 .game-card {
     background: rgba(9, 17, 40, 0.78);
-    border: 1px solid rgba(153, 186, 255, 0.12);
-    border-radius: 24px;
-    padding: clamp(1.4rem, 4vw, 1.9rem);
+    border: 1px solid rgba(153, 186, 255, 0.16);
+    border-radius: 26px;
+    padding: clamp(1.6rem, 4vw, 2.2rem);
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    box-shadow: 0 18px 45px rgba(5, 12, 31, 0.45);
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    justify-content: space-between;
+    gap: 1.35rem;
+    min-height: clamp(240px, 28vw, 280px);
+    box-shadow: 0 22px 55px rgba(5, 12, 31, 0.48);
+    backdrop-filter: blur(18px);
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+    overflow: hidden;
 }
 
 .game-card--featured {
-    border-color: rgba(118, 205, 255, 0.35);
-    box-shadow: 0 25px 55px rgba(29, 114, 255, 0.45);
+    border-color: rgba(118, 205, 255, 0.4);
+    box-shadow: 0 28px 60px rgba(29, 114, 255, 0.45);
 }
 
-.game-card:hover {
-    transform: translateY(-6px);
-    border-color: rgba(150, 190, 255, 0.35);
-    box-shadow: 0 30px 60px rgba(5, 12, 31, 0.55);
+.game-card:hover,
+.game-card:focus-within {
+    transform: translateY(-8px);
+    border-color: rgba(150, 190, 255, 0.4);
+    box-shadow: 0 34px 68px rgba(5, 12, 31, 0.6);
 }
 
 .game-card__header {
@@ -144,12 +151,22 @@
     box-shadow: 0 14px 28px rgba(47, 139, 255, 0.35);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 1100px) {
+    .game-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
     .home-intro__eyebrow {
         letter-spacing: 0.35rem;
     }
 
     .game-grid {
         grid-template-columns: 1fr;
+    }
+
+    .game-card {
+        min-height: auto;
     }
 }
