@@ -1,8 +1,605 @@
 @page "/tetris"
-
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@implements IDisposable
 <PageTitle>Tetris</PageTitle>
 
-<section class="page-placeholder">
-    <h1>Tetris</h1>
-    <p>Die Tetris-Arena ist fast bereit. Schon bald stapelst du hier wieder Tetrominos.</p>
+<section class="tetris-shell">
+    <header class="tetris-header">
+        <div class="title-block">
+            <h1>Tetris</h1>
+            <p>Staple die Tetrominos, cleare Linien und werde mit jedem Punkt schneller!</p>
+        </div>
+        <div class="primary-actions">
+            <button class="arcade-btn" @onclick="TogglePause">@(_isPaused ? "Fortsetzen" : "Pause")</button>
+            <button class="arcade-btn" @onclick="ResetGame">Neu starten</button>
+            <button class="arcade-btn" @onclick="HardDrop">Harddrop</button>
+            <button class="arcade-btn secondary" @onclick="ToggleDebug">@(_showDebug ? "Debug aus" : "Debug an")</button>
+        </div>
+    </header>
+
+    <div class="tetris-content">
+        <div class="board-wrapper">
+            <div class="board" tabindex="0" @onkeydown="HandleKeyDown" @ref="_boardElement">
+                @for (var r = 0; r < BoardHeight; r++)
+                {
+                    <div class="row">
+                        @for (var c = 0; c < BoardWidth; c++)
+                        {
+                            var cell = GetCellState(r, c);
+                            <div class="cell @cell.Class" style="background:@cell.Color"></div>
+                        }
+                    </div>
+                }
+            </div>
+            @if (_isGameOver)
+            {
+                <div class="overlay">
+                    <div>
+                        <h2>Game Over</h2>
+                        <p>Du hast @Score Punkte erreicht.</p>
+                        <button class="arcade-btn" @onclick="ResetGame">Noch eine Runde</button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <aside class="info-panel">
+            <div class="stat-card">
+                <h3>Punkte</h3>
+                <p>@Score</p>
+            </div>
+            <div class="stat-card">
+                <h3>Linien</h3>
+                <p>@_linesCleared</p>
+            </div>
+            <div class="stat-card">
+                <h3>Geschwindigkeit</h3>
+                <p>@_currentSpeedLabel</p>
+            </div>
+            <div class="next-piece">
+                <h3>Nächstes Teil</h3>
+                <div class="mini-grid">
+                    @for (var r = 0; r < 4; r++)
+                    {
+                        <div class="row">
+                            @for (var c = 0; c < 4; c++)
+                            {
+                                var fill = _nextPreview[r, c];
+                                <div class="cell" style="background:@fill"></div>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+
+            <section class="controls-card">
+                <h3>Steuerung</h3>
+                <ul>
+                    <li><span>← →</span> bewegen</li>
+                    <li><span>↑ / W</span> rotieren</li>
+                    <li><span>↓</span> schneller fallen</li>
+                    <li><span>Leertaste</span> Harddrop</li>
+                    <li><span>P</span> Pause</li>
+                </ul>
+            </section>
+
+            @if (_showDebug)
+            {
+                <section class="debug-card">
+                    <h3>Debug / Test</h3>
+                    <div class="debug-actions">
+                        <button class="arcade-btn secondary" @onclick="() => AdjustScore(100)">+100 Punkte</button>
+                        <button class="arcade-btn secondary" @onclick="ForceLineClear">Linie füllen</button>
+                        <button class="arcade-btn secondary" @onclick="DropStep">Step</button>
+                        <button class="arcade-btn secondary" @onclick="SpawnSpecific">I-Teil</button>
+                    </div>
+                </section>
+            }
+        </aside>
+    </div>
 </section>
+
+@code {
+    private const int BoardWidth = 10;
+    private const int BoardHeight = 20;
+
+    private readonly string?[,] _board = new string?[BoardHeight, BoardWidth];
+    private TetrominoInstance? _currentPiece;
+    private TetrominoDefinition? _nextPiece;
+    private readonly Random _random = new();
+    private System.Timers.Timer? _timer;
+    private bool _isPaused;
+    private bool _isGameOver;
+    private int _linesCleared;
+    private double _currentInterval = 800;
+    private string _currentSpeedLabel = "1";
+    private bool _showDebug;
+    private readonly string?[,] _nextPreview = new string?[4, 4];
+    private ElementReference _boardElement;
+
+    public int Score { get; set; }
+
+    protected override void OnInitialized()
+    {
+        StartGame();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.Delay(100);
+            await _boardElement.FocusAsync();
+        }
+    }
+
+    private void StartGame()
+    {
+        Array.Clear(_board, 0, _board.Length);
+        Score = 0;
+        _linesCleared = 0;
+        _isPaused = false;
+        _isGameOver = false;
+        _currentInterval = 800;
+        _currentSpeedLabel = "1";
+        _nextPiece = GetRandomDefinition();
+        SpawnPiece();
+        EnsureTimer();
+        StateHasChanged();
+    }
+
+    private void EnsureTimer()
+    {
+        if (_timer is not null)
+        {
+            _timer.Elapsed -= HandleTimerTick;
+            _timer.Dispose();
+        }
+
+        _timer = new System.Timers.Timer(_currentInterval)
+        {
+            AutoReset = true,
+            Enabled = true
+        };
+        _timer.Elapsed += HandleTimerTick;
+    }
+
+    private async void HandleTimerTick(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        await InvokeAsync(() =>
+        {
+            if (_isPaused || _isGameOver)
+            {
+                return;
+            }
+
+            if (!TryMove(1, 0))
+            {
+                LockPiece();
+            }
+        });
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (_isGameOver)
+        {
+            return;
+        }
+
+        switch (args.Key)
+        {
+            case "ArrowLeft":
+            case "a":
+            case "A":
+                TryMove(0, -1);
+                break;
+            case "ArrowRight":
+            case "d":
+            case "D":
+                TryMove(0, 1);
+                break;
+            case "ArrowDown":
+            case "s":
+            case "S":
+                if (!TryMove(1, 0))
+                {
+                    LockPiece();
+                }
+                break;
+            case "ArrowUp":
+            case "w":
+            case "W":
+                Rotate();
+                break;
+            case " ":
+            case "Space":
+            case "Spacebar":
+                HardDrop();
+                break;
+            case "p":
+            case "P":
+                TogglePause();
+                break;
+        }
+    }
+
+    private bool TryMove(int dRow, int dCol)
+    {
+        if (_currentPiece is null)
+        {
+            return false;
+        }
+
+        var newRow = _currentPiece.Row + dRow;
+        var newCol = _currentPiece.Column + dCol;
+
+        if (!IsValidPosition(_currentPiece.Definition.Rotations[_currentPiece.RotationIndex], newRow, newCol))
+        {
+            return false;
+        }
+
+        _currentPiece = _currentPiece with { Row = newRow, Column = newCol };
+        StateHasChanged();
+        return true;
+    }
+
+    private void Rotate()
+    {
+        if (_currentPiece is null)
+        {
+            return;
+        }
+
+        var nextRotation = (_currentPiece.RotationIndex + 1) % _currentPiece.Definition.Rotations.Length;
+        var rotationMatrix = _currentPiece.Definition.Rotations[nextRotation];
+        if (IsValidPosition(rotationMatrix, _currentPiece.Row, _currentPiece.Column))
+        {
+            _currentPiece = _currentPiece with { RotationIndex = nextRotation };
+            StateHasChanged();
+        }
+        else if (IsValidPosition(rotationMatrix, _currentPiece.Row, _currentPiece.Column - 1))
+        {
+            _currentPiece = _currentPiece with { RotationIndex = nextRotation, Column = _currentPiece.Column - 1 };
+            StateHasChanged();
+        }
+        else if (IsValidPosition(rotationMatrix, _currentPiece.Row, _currentPiece.Column + 1))
+        {
+            _currentPiece = _currentPiece with { RotationIndex = nextRotation, Column = _currentPiece.Column + 1 };
+            StateHasChanged();
+        }
+    }
+
+    private void HardDrop()
+    {
+        if (_isGameOver || _isPaused)
+        {
+            return;
+        }
+
+        if (_currentPiece is null)
+        {
+            return;
+        }
+
+        while (TryMove(1, 0))
+        {
+            Score += 2;
+        }
+
+        UpdateSpeed();
+        LockPiece();
+    }
+
+    private void DropStep()
+    {
+        if (!TryMove(1, 0))
+        {
+            LockPiece();
+        }
+    }
+
+    private void LockPiece()
+    {
+        if (_currentPiece is null)
+        {
+            return;
+        }
+
+        foreach (var offset in _currentPiece.Definition.Rotations[_currentPiece.RotationIndex])
+        {
+            var r = _currentPiece.Row + offset.r;
+            var c = _currentPiece.Column + offset.c;
+            if (r >= 0 && r < BoardHeight && c >= 0 && c < BoardWidth)
+            {
+                _board[r, c] = _currentPiece.Definition.Color;
+            }
+        }
+
+        var cleared = ClearLines();
+        if (cleared > 0)
+        {
+            _linesCleared += cleared;
+            AddScoreForLines(cleared);
+        }
+
+        SpawnPiece();
+        StateHasChanged();
+    }
+
+    private int ClearLines()
+    {
+        var cleared = 0;
+        for (var r = BoardHeight - 1; r >= 0; r--)
+        {
+            var full = true;
+            for (var c = 0; c < BoardWidth; c++)
+            {
+                if (_board[r, c] is null)
+                {
+                    full = false;
+                    break;
+                }
+            }
+
+            if (full)
+            {
+                cleared++;
+                for (var row = r; row > 0; row--)
+                {
+                    for (var col = 0; col < BoardWidth; col++)
+                    {
+                        _board[row, col] = _board[row - 1, col];
+                    }
+                }
+                for (var col = 0; col < BoardWidth; col++)
+                {
+                    _board[0, col] = null;
+                }
+                r++; // re-check the same row index after collapse
+            }
+        }
+
+        return cleared;
+    }
+
+    private void AddScoreForLines(int cleared)
+    {
+        var basePoints = cleared switch
+        {
+            1 => 100,
+            2 => 300,
+            3 => 500,
+            4 => 800,
+            _ => 0
+        };
+        Score += basePoints;
+        UpdateSpeed();
+    }
+
+    private void AdjustScore(int amount)
+    {
+        Score += amount;
+        if (Score < 0)
+        {
+            Score = 0;
+        }
+        UpdateSpeed();
+        StateHasChanged();
+    }
+
+    private void ForceLineClear()
+    {
+        for (var c = 0; c < BoardWidth; c++)
+        {
+            _board[BoardHeight - 1, c] = "#55f28c";
+        }
+        _currentPiece = null;
+        var cleared = ClearLines();
+        if (cleared > 0)
+        {
+            _linesCleared += cleared;
+            AddScoreForLines(cleared);
+        }
+        SpawnPiece();
+        StateHasChanged();
+    }
+
+    private void SpawnSpecific()
+    {
+        _currentPiece = null;
+        _nextPiece = Tetrominoes[0];
+        SpawnPiece();
+    }
+
+    private void UpdateSpeed()
+    {
+        var level = Math.Clamp(1 + Score / 400, 1, 15);
+        _currentSpeedLabel = level.ToString(CultureInfo.InvariantCulture);
+        var newInterval = Math.Max(110, 800 - (level - 1) * 55);
+        _currentInterval = newInterval;
+        if (_timer is not null)
+        {
+            _timer.Interval = _currentInterval;
+        }
+    }
+
+    private void SpawnPiece()
+    {
+        _currentPiece = new TetrominoInstance(_nextPiece ?? GetRandomDefinition())
+        {
+            Row = -1,
+            Column = 3
+        };
+        _nextPiece = GetRandomDefinition();
+        UpdatePreview();
+        if (!IsValidPosition(_currentPiece.Definition.Rotations[_currentPiece.RotationIndex], _currentPiece.Row, _currentPiece.Column))
+        {
+            _isGameOver = true;
+            _timer?.Stop();
+        }
+        StateHasChanged();
+    }
+
+    private void UpdatePreview()
+    {
+        Array.Clear(_nextPreview, 0, _nextPreview.Length);
+        if (_nextPiece is null)
+        {
+            return;
+        }
+
+        foreach (var offset in _nextPiece.Rotations[0])
+        {
+            var r = offset.r + 1;
+            var c = offset.c + 1;
+            if (r >= 0 && r < 4 && c >= 0 && c < 4)
+            {
+                _nextPreview[r, c] = _nextPiece.Color;
+            }
+        }
+    }
+
+    private bool IsValidPosition((int r, int c)[] shape, int row, int col)
+    {
+        foreach (var offset in shape)
+        {
+            var newRow = row + offset.r;
+            var newCol = col + offset.c;
+
+            if (newRow < 0)
+            {
+                continue;
+            }
+
+            if (newRow >= BoardHeight || newCol < 0 || newCol >= BoardWidth)
+            {
+                return false;
+            }
+
+            if (_board[newRow, newCol] is not null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private (string Color, string Class) GetCellState(int row, int col)
+    {
+        if (_currentPiece is not null)
+        {
+            foreach (var offset in _currentPiece.Definition.Rotations[_currentPiece.RotationIndex])
+            {
+                var r = _currentPiece.Row + offset.r;
+                var c = _currentPiece.Column + offset.c;
+                if (r == row && c == col)
+                {
+                    return (_currentPiece.Definition.Color, "active");
+                }
+            }
+        }
+
+        var color = _board[row, col];
+        return (color ?? "transparent", color is not null ? "locked" : string.Empty);
+    }
+
+    private void TogglePause()
+    {
+        if (_isGameOver)
+        {
+            return;
+        }
+        _isPaused = !_isPaused;
+        if (_isPaused)
+        {
+            _timer?.Stop();
+        }
+        else
+        {
+            _timer?.Start();
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleDebug()
+    {
+        _showDebug = !_showDebug;
+        StateHasChanged();
+    }
+
+    private void ResetGame()
+    {
+        _timer?.Stop();
+        StartGame();
+    }
+
+    public void Dispose()
+    {
+        if (_timer is not null)
+        {
+            _timer.Elapsed -= HandleTimerTick;
+            _timer.Dispose();
+        }
+    }
+
+    private TetrominoDefinition GetRandomDefinition()
+    {
+        return Tetrominoes[_random.Next(Tetrominoes.Length)];
+    }
+
+    private static readonly TetrominoDefinition[] Tetrominoes =
+    {
+        new("I", "#5cf0ff", new[]
+        {
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (0, 2) },
+            new (int r, int c)[]{ (-1, 1), (0, 1), (1, 1), (2, 1) }
+        }),
+        new("J", "#4f72ff", new[]
+        {
+            new (int r, int c)[]{ (-1, -1), (0, -1), (0, 0), (0, 1) },
+            new (int r, int c)[]{ (-1, 0), (-1, 1), (0, 0), (1, 0) },
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (1, 1) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (1, 0), (1, -1) }
+        }),
+        new("L", "#ffa14d", new[]
+        {
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (-1, 1) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (1, 0), (-1, -1) },
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (1, -1) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (1, 0), (1, 1) }
+        }),
+        new("O", "#ffe84d", new[]
+        {
+            new (int r, int c)[]{ (0, 0), (0, 1), (1, 0), (1, 1) }
+        }),
+        new("S", "#55f28c", new[]
+        {
+            new (int r, int c)[]{ (0, 0), (0, 1), (-1, -1), (-1, 0) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (0, 1), (1, 1) }
+        }),
+        new("T", "#b476ff", new[]
+        {
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (-1, 0) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (1, 0), (0, 1) },
+            new (int r, int c)[]{ (0, -1), (0, 0), (0, 1), (1, 0) },
+            new (int r, int c)[]{ (-1, 0), (0, 0), (1, 0), (0, -1) }
+        }),
+        new("Z", "#ff5c7a", new[]
+        {
+            new (int r, int c)[]{ (0, -1), (0, 0), (-1, 0), (-1, 1) },
+            new (int r, int c)[]{ (-1, 1), (0, 1), (0, 0), (1, 0) }
+        })
+    };
+
+    private readonly record struct TetrominoDefinition(string Name, string Color, (int r, int c)[][] Rotations);
+
+    private record TetrominoInstance(TetrominoDefinition Definition)
+    {
+        public int Row { get; init; } = 0;
+        public int Column { get; init; } = 3;
+        public int RotationIndex { get; init; }
+    }
+}
