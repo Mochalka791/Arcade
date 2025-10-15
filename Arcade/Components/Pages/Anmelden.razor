@@ -1,0 +1,28 @@
+@page "/anmelden"
+
+<PageTitle>Anmelden</PageTitle>
+
+<section class="auth">
+    <div class="auth__card">
+        <h1>Anmelden</h1>
+        <p>Willkommen zurück im Arcade-Hub. Melde dich an, um Fortschritte zu speichern und an Ranglisten teilzunehmen.</p>
+
+        <form class="auth__form" novalidate>
+            <label>
+                <span>E-Mail-Adresse</span>
+                <input type="email" name="email" placeholder="name@example.com" autocomplete="email" required />
+            </label>
+
+            <label>
+                <span>Passwort</span>
+                <input type="password" name="password" placeholder="Passwort" autocomplete="current-password" required />
+            </label>
+
+            <div class="auth__actions">
+                <button type="submit" class="auth__submit">Anmelden</button>
+            </div>
+        </form>
+
+        <p class="auth__hint">Noch kein Konto? Die Registrierung folgt in einem kommenden Update.</p>
+    </div>
+</section>
