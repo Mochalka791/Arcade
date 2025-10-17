@@ -5,7 +5,7 @@
     --text-secondary: rgba(233, 241, 255, 0.7);
     --cursor-x: 50vw;
     --cursor-y: 50vh;
-    --cursor-glow-opacity: 0.55;
+    --cursor-glow-opacity: 0.35;
     --cursor-parallax-x: 0px;
     --cursor-parallax-y: 0px;
     --star-layer-one-speed: 140s;
@@ -36,11 +36,11 @@ body::before {
     z-index: -2;
     pointer-events: none;
     background-color: var(--background-color);
-    background-image: radial-gradient(1px 1px at calc(24px + var(--cursor-parallax-x)) calc(24px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.2), transparent 60%),
-                      radial-gradient(1px 1px at calc(120px - var(--cursor-parallax-x)) calc(160px - var(--cursor-parallax-y)), rgba(255, 255, 255, 0.13), transparent 65%),
-                      radial-gradient(1px 1px at calc(260px + var(--cursor-parallax-x)) calc(90px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.16), transparent 65%),
-                      radial-gradient(420px 420px at 75% -10%, rgba(52, 104, 255, 0.25), transparent 70%),
-                      radial-gradient(520px 520px at 10% 15%, rgba(52, 255, 206, 0.18), transparent 75%);
+    background-image: radial-gradient(1px 1px at calc(24px + var(--cursor-parallax-x)) calc(24px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.18), transparent 60%),
+                      radial-gradient(1px 1px at calc(120px - var(--cursor-parallax-x)) calc(160px - var(--cursor-parallax-y)), rgba(255, 255, 255, 0.1), transparent 65%),
+                      radial-gradient(1px 1px at calc(260px + var(--cursor-parallax-x)) calc(90px + var(--cursor-parallax-y)), rgba(255, 255, 255, 0.12), transparent 65%),
+                      radial-gradient(420px 420px at 75% -10%, rgba(52, 104, 255, 0.22), transparent 70%),
+                      radial-gradient(520px 520px at 10% 15%, rgba(52, 255, 206, 0.16), transparent 75%);
     background-size: 320px 320px, 420px 420px, 560px 560px, 100% 100%, 100% 100%;
     animation: star-drift var(--star-layer-one-speed) linear infinite;
     will-change: background-position;
@@ -52,9 +52,9 @@ body::after {
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background: radial-gradient(520px 520px at var(--cursor-x) var(--cursor-y), rgba(46, 102, 255, var(--cursor-glow-opacity)), transparent 70%);
+    background: radial-gradient(480px 480px at var(--cursor-x) var(--cursor-y), rgba(46, 102, 255, var(--cursor-glow-opacity)), transparent 75%);
     transition: opacity 0.3s ease;
-    opacity: 0.85;
+    opacity: 0.75;
 }
 
 a {

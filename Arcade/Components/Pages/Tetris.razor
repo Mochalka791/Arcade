@@ -590,7 +590,7 @@
     {
         if (_boardElement.Context is not null)
         {
-            await _boardElement.FocusAsync();
+            await _boardElement.FocusAsync(new FocusOptions { PreventScroll = true });
         }
     }
 

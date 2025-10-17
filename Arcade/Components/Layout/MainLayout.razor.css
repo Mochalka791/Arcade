@@ -8,7 +8,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    padding-bottom: 3.2rem;
+    padding-bottom: 2.4rem;
 }
 
 .layout::after {
@@ -26,13 +26,13 @@
     align-items: center;
     justify-content: space-between;
     gap: clamp(1rem, 3vw, 2.4rem);
-    padding: clamp(1.2rem, 3.6vw, 2.2rem) clamp(1.4rem, 5.5vw, 3.1rem);
+    padding: clamp(1rem, 3.2vw, 1.8rem) clamp(1.4rem, 5.5vw, 3rem);
     position: sticky;
     top: 0;
     z-index: 10;
     background: rgba(5, 12, 31, 0.78);
-    backdrop-filter: blur(18px);
-    border-bottom: 1px solid rgba(152, 185, 255, 0.18);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(152, 185, 255, 0.14);
 }
 
 .layout__nav {
@@ -137,7 +137,7 @@
 .layout__main {
     flex: 1;
     width: min(1120px, 92vw);
-    margin: clamp(2.2rem, 7vw, 3.6rem) auto clamp(2.6rem, 8vw, 4rem);
+    margin: clamp(1.8rem, 6vw, 2.8rem) auto clamp(1.9rem, 6vw, 3.1rem);
 }
 
 #blazor-error-ui {
