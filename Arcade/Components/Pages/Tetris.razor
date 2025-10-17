@@ -1,7 +1,8 @@
 @page "/tetris"
 @using System.Globalization
+@using System.Threading
 @using Microsoft.AspNetCore.Components.Web
-@implements IDisposable
+@implements IAsyncDisposable
 <PageTitle>Tetris</PageTitle>
 
 <section class="tetris-shell">
@@ -12,22 +13,22 @@
         </div>
         <div class="primary-actions">
             <button class="arcade-btn" @onclick="TogglePause">@(_isPaused ? "Fortsetzen" : "Pause")</button>
-            <button class="arcade-btn" @onclick="ResetGame">Neu starten</button>
-            <button class="arcade-btn" @onclick="HardDrop">Harddrop</button>
+            <button class="arcade-btn" @onclick="ResetGameAsync">Neu starten</button>
+            <button class="arcade-btn" @onclick="HardDropFromButton">Harddrop</button>
             <button class="arcade-btn secondary" @onclick="ToggleDebug">@(_showDebug ? "Debug aus" : "Debug an")</button>
         </div>
     </header>
 
     <div class="tetris-content">
         <div class="board-wrapper">
-            <div class="board" tabindex="0" @onkeydown="HandleKeyDown" @ref="_boardElement">
+            <div class="board" tabindex="0" role="application" @onkeydown="HandleKeyDown" @onkeydown:preventDefault="true" @onkeydown:stopPropagation="true" @onpointerdown="FocusBoard" @ref="_boardElement">
                 @for (var r = 0; r < BoardHeight; r++)
                 {
                     <div class="row">
                         @for (var c = 0; c < BoardWidth; c++)
                         {
-                            <div class="cell @(GetCellState(r, c).Class)"
-                                 style="background:@(GetCellState(r, c).Color)"></div>
+                            var cell = GetCellState(r, c);
+                            <div class="cell @cell.Class" style="background:@cell.Color"></div>
                         }
                     </div>
                 }
@@ -38,7 +39,7 @@
                     <div>
                         <h2>Game Over</h2>
                         <p>Du hast @Score Punkte erreicht.</p>
-                        <button class="arcade-btn" @onclick="ResetGame">Noch eine Runde</button>
+                        <button class="arcade-btn" @onclick="ResetGameAsync">Noch eine Runde</button>
                     </div>
                 </div>
             }
@@ -65,9 +66,10 @@
                         <div class="row">
                             @for (var c = 0; c < 4; c++)
                             {
-                                <div class="cell" style="background:@(_nextPreview[r, c])"></div>
+                                var fill = _nextPreview[r, c];
+                                <div class="cell" style="background:@fill"></div>
                             }
-                        </div>
+                        }
                     }
                 </div>
             </div>
@@ -107,7 +109,8 @@
     private TetrominoInstance? _currentPiece;
     private TetrominoDefinition? _nextPiece;
     private readonly Random _random = new();
-    private System.Timers.Timer? _timer;
+    private CancellationTokenSource? _loopCts;
+    private Task? _loopTask;
     private bool _isPaused;
     private bool _isGameOver;
     private int _linesCleared;
@@ -119,9 +122,9 @@
 
     public int Score { get; set; }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        StartGame();
+        await StartGameAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -129,12 +132,14 @@
         if (firstRender)
         {
             await Task.Delay(100);
-            await _boardElement.FocusAsync();
+            await FocusBoard();
         }
     }
 
-    private void StartGame()
+    private async Task StartGameAsync()
     {
+        await StopLoopAsync();
+
         Array.Clear(_board, 0, _board.Length);
         Score = 0;
         _linesCleared = 0;
@@ -144,43 +149,98 @@
         _currentSpeedLabel = "1";
         _nextPiece = GetRandomDefinition();
         SpawnPiece();
-        EnsureTimer();
+        StartLoop();
         StateHasChanged();
     }
 
-    private void EnsureTimer()
+    private void StartLoop()
     {
-        if (_timer is not null)
+        _loopCts?.Cancel();
+        _loopCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _loopCts = cts;
+        _loopTask = RunGameLoopAsync(cts);
+    }
+
+    private async Task StopLoopAsync()
+    {
+        if (_loopCts is null)
         {
-            _timer.Elapsed -= HandleTimerTick;
-            _timer.Dispose();
+            return;
         }
 
-        _timer = new System.Timers.Timer(_currentInterval)
+        try
         {
-            AutoReset = true,
-            Enabled = true
-        };
-        _timer.Elapsed += HandleTimerTick;
+            _loopCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        if (_loopTask is not null)
+        {
+            try
+            {
+                await _loopTask;
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        _loopCts.Dispose();
+        _loopCts = null;
+        _loopTask = null;
     }
 
-    private async void HandleTimerTick(object? sender, System.Timers.ElapsedEventArgs e)
+    private async Task RunGameLoopAsync(CancellationTokenSource cts)
     {
-        await InvokeAsync(() =>
+        var token = cts.Token;
+        try
         {
-            if (_isPaused || _isGameOver)
+            while (!token.IsCancellationRequested)
             {
-                return;
-            }
+                var interval = Math.Max(80, _currentInterval);
 
-            if (!TryMove(1, 0))
-            {
-                LockPiece();
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(interval), token);
+                }
+                catch (TaskCanceledException)
+                {
+                    break;
+                }
+
+                if (_isPaused || _isGameOver)
+                {
+                    continue;
+                }
+
+                await InvokeAsync(() =>
+                {
+                    if (!TryMove(1, 0))
+                    {
+                        LockPiece();
+                    }
+                });
             }
-        });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(cts, _loopCts))
+            {
+                _loopTask = null;
+            }
+        }
     }
 
-    private void HandleKeyDown(KeyboardEventArgs args)
+    private async Task HandleKeyDown(KeyboardEventArgs args)
     {
         if (_isGameOver)
         {
@@ -215,11 +275,11 @@
             case " ":
             case "Space":
             case "Spacebar":
-                HardDrop();
+                await HardDropAsync();
                 break;
             case "p":
             case "P":
-                TogglePause();
+                await TogglePause();
                 break;
         }
     }
@@ -270,14 +330,9 @@
         }
     }
 
-    private void HardDrop()
+    private async Task HardDropAsync()
     {
-        if (_isGameOver || _isPaused)
-        {
-            return;
-        }
-
-        if (_currentPiece is null)
+        if (_isGameOver || _isPaused || _currentPiece is null)
         {
             return;
         }
@@ -289,6 +344,12 @@
 
         UpdateSpeed();
         LockPiece();
+        await FocusBoard();
+    }
+
+    private async Task HardDropFromButton()
+    {
+        await HardDropAsync();
     }
 
     private void DropStep()
@@ -356,7 +417,7 @@
                 {
                     _board[0, col] = null;
                 }
-                r++; // re-check collapsed row
+                r++;
             }
         }
 
@@ -416,12 +477,7 @@
     {
         var level = Math.Clamp(1 + Score / 400, 1, 15);
         _currentSpeedLabel = level.ToString(CultureInfo.InvariantCulture);
-        var newInterval = Math.Max(110, 800 - (level - 1) * 55);
-        _currentInterval = newInterval;
-        if (_timer is not null)
-        {
-            _timer.Interval = _currentInterval;
-        }
+        _currentInterval = Math.Max(110, 800 - (level - 1) * 55);
     }
 
     private void SpawnPiece()
@@ -436,7 +492,7 @@
         if (!IsValidPosition(_currentPiece.Definition.Rotations[_currentPiece.RotationIndex], _currentPiece.Row, _currentPiece.Column))
         {
             _isGameOver = true;
-            _timer?.Stop();
+            _loopCts?.Cancel();
         }
         StateHasChanged();
     }
@@ -444,18 +500,18 @@
     private void UpdatePreview()
     {
         Array.Clear(_nextPreview, 0, _nextPreview.Length);
-
-        var def = _nextPiece;          // TetrominoDefinition?
-        if (def is null)
+        if (_nextPiece is null)
+        {
             return;
+        }
 
-        foreach (var offset in def.Value.Rotations[0])
+        foreach (var offset in _nextPiece.Rotations[0])
         {
             var r = offset.r + 1;
             var c = offset.c + 1;
             if (r >= 0 && r < 4 && c >= 0 && c < 4)
             {
-                _nextPreview[r, c] = def.Value.Color;
+                _nextPreview[r, c] = _nextPiece.Color;
             }
         }
     }
@@ -505,43 +561,42 @@
         return (color ?? "transparent", color is not null ? "locked" : string.Empty);
     }
 
-    private void TogglePause()
+    private async Task TogglePause()
     {
         if (_isGameOver)
         {
             return;
         }
+
         _isPaused = !_isPaused;
-        if (_isPaused)
-        {
-            _timer?.Stop();
-        }
-        else
-        {
-            _timer?.Start();
-        }
         StateHasChanged();
+        await FocusBoard();
     }
 
-    private void ToggleDebug()
+    private async Task ToggleDebug()
     {
         _showDebug = !_showDebug;
         StateHasChanged();
+        await FocusBoard();
     }
 
-    private void ResetGame()
+    private async Task ResetGameAsync()
     {
-        _timer?.Stop();
-        StartGame();
+        await StartGameAsync();
+        await FocusBoard();
     }
 
-    public void Dispose()
+    private async Task FocusBoard()
     {
-        if (_timer is not null)
+        if (_boardElement.Context is not null)
         {
-            _timer.Elapsed -= HandleTimerTick;
-            _timer.Dispose();
+            await _boardElement.FocusAsync();
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopLoopAsync();
     }
 
     private TetrominoDefinition GetRandomDefinition()

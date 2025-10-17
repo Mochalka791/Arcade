@@ -3,6 +3,12 @@
 <div class="layout">
     <header class="layout__header">
         <NavLink class="layout__brand" href="/" Match="NavLinkMatch.All">Arcade</NavLink>
+
+        <nav class="layout__nav" aria-label="Spielnavigation">
+            <NavLink class="layout__nav-link" href="/tetris">Tetris</NavLink>
+            <span class="layout__nav-link layout__nav-link--disabled" aria-disabled="true">Schach (bald)</span>
+        </nav>
+
         <NavLink class="layout__login" href="/anmelden">Anmelden</NavLink>
     </header>
 
