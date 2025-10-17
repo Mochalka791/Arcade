@@ -1,7 +1,77 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Arcade</PageTitle>
 
-<h1>Hello, world!</h1>
+<section class="home-intro">
+    <span class="home-intro__eyebrow">Arcade</span>
+    <h1>Wähle dein Spiel</h1>
+    <p class="home-intro__subtitle">Entdecke klassische Spiele in modernem Gewand. Spiele jetzt Tetris oder wirf einen Blick auf kommende Highlights.</p>
+</section>
 
-Welcome to your new app.
+<section class="game-grid" aria-label="Spielauswahl">
+    <article class="game-card game-card--featured">
+        <div class="game-card__header">
+            <h2>Tetris</h2>
+            <span class="status status--available">Verfügbar</span>
+        </div>
+        <p class="game-card__description">Staple Tetrominos, löse Linien im Tempo und stelle dich unserem Arcade-Speed-Modus.</p>
+        <div class="game-card__footer">
+            <NavLink class="game-card__button" href="/tetris">Jetzt spielen</NavLink>
+        </div>
+    </article>
+
+    <article class="game-card">
+        <div class="game-card__header">
+            <h2>Snake</h2>
+            <span class="status status--upcoming">Bald</span>
+        </div>
+        <p class="game-card__description">Führe deine Schlange durch das Raster und knacke deinen Highscore. Update folgt.</p>
+        <div class="game-card__footer">
+            <NavLink class="game-card__button game-card__button--ghost" href="/snake">Mehr erfahren</NavLink>
+        </div>
+    </article>
+
+    <article class="game-card">
+        <div class="game-card__header">
+            <h2>Schach</h2>
+            <span class="status status--offline">In Arbeit</span>
+        </div>
+        <p class="game-card__description">Die digitale Arena wird derzeit umgebaut. Bald kannst du hier wieder strategische Partien spielen.</p>
+        <div class="game-card__footer">
+            <span class="game-card__button game-card__button--ghost game-card__button--disabled" aria-disabled="true">Bald verfügbar</span>
+        </div>
+    </article>
+
+    <article class="game-card">
+        <div class="game-card__header">
+            <h2>Billyard</h2>
+            <span class="status status--upcoming">Bald</span>
+        </div>
+        <p class="game-card__description">Ziele präzise und versenke die Kugeln auf dem digitalen Tisch. Update folgt.</p>
+        <div class="game-card__footer">
+            <NavLink class="game-card__button game-card__button--ghost" href="/billyard">Mehr erfahren</NavLink>
+        </div>
+    </article>
+
+    <article class="game-card">
+        <div class="game-card__header">
+            <h2>Spiel 5</h2>
+            <span class="status status--upcoming">Bald</span>
+        </div>
+        <p class="game-card__description">Ein weiterer Arcade-Klassiker ist bereits in Arbeit. Bleib gespannt!</p>
+        <div class="game-card__footer">
+            <NavLink class="game-card__button game-card__button--ghost" href="/spiel5">Mehr erfahren</NavLink>
+        </div>
+    </article>
+
+    <article class="game-card">
+        <div class="game-card__header">
+            <h2>Spiel 6</h2>
+            <span class="status status--upcoming">Bald</span>
+        </div>
+        <p class="game-card__description">Hier entsteht ein neues Erlebnis für den Hub. Update folgt.</p>
+        <div class="game-card__footer">
+            <NavLink class="game-card__button game-card__button--ghost" href="/spiel6">Mehr erfahren</NavLink>
+        </div>
+    </article>
+</section>
