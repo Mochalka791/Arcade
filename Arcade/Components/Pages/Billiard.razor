@@ -2,6 +2,7 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 @using Microsoft.JSInterop
+@using System
 @using System.Threading.Tasks
 
 <PageTitle>Billiard</PageTitle>
@@ -38,13 +39,13 @@
     <div class="billiard-controls">
         <label>
             <span>Winkel</span>
-            <input type="range" min="0" max="360" step="1" @bind="_angle" />
-            <span class="value">@_angle.ToString("F0")°</span>
+            <input type="range" min="0" max="360" step="1" @bind-value="Angle" @bind-value:event="oninput" />
+            <span class="value">@Angle.ToString("F0")°</span>
         </label>
         <label>
             <span>Kraft</span>
-            <input type="range" min="10" max="100" step="1" @bind="_power" />
-            <span class="value">@_power.ToString("F0")%</span>
+            <input type="range" min="10" max="100" step="1" @bind-value="Power" @bind-value:event="oninput" />
+            <span class="value">@Power.ToString("F0")%</span>
         </label>
         <div class="buttons">
             <button class="arcade-btn" @onclick="ShootAsync" disabled="@(!_canShoot)">Stoß</button>
@@ -52,12 +53,13 @@
         </div>
     </div>
 
-    <p class="billiard-tip">Ziehe den Schieberegler für den Winkel, um den Stoß auszurichten, und erhöhe die Kraft für weitere Distanzen.</p>
+    <p class="billiard-tip">Justiere Winkel und Kraft, bis die Leuchtlinie perfekt sitzt – sie zeigt dir den ersten Treffer und die Stoßintensität.</p>
 </section>
 
 @code {
     private ElementReference _canvasRef;
     private DotNetObjectReference<Billiard>? _objRef;
+    private IJSObjectReference? _module;
     private double _angle = 15;
     private double _power = 55;
     private int _remainingBalls = 3;
@@ -69,26 +71,36 @@
     {
         if (firstRender)
         {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./scripts/billiard.js");
             _objRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("billiardGame.init", _canvasRef, _objRef);
+            await _module.InvokeVoidAsync("init", _canvasRef, _objRef, _angle, _power);
+            await UpdateAimAsync();
         }
     }
 
     private async Task ShootAsync()
     {
-        if (!_canShoot)
+        if (!_canShoot || _module is null)
         {
             return;
         }
 
         _canShoot = false;
         StateHasChanged();
-        await JS.InvokeVoidAsync("billiardGame.shoot", _canvasRef, _angle, _power);
+        await _module.InvokeVoidAsync("shoot", _canvasRef, _angle, _power);
     }
 
     private async Task ResetAsync()
     {
-        await JS.InvokeVoidAsync("billiardGame.reset", _canvasRef);
+        if (_module is null)
+        {
+            return;
+        }
+
+        await _module.InvokeVoidAsync("reset", _canvasRef);
+        Angle = 15;
+        Power = 55;
+        await UpdateAimAsync();
         _victory = false;
         _remainingBalls = 3;
         _shots = 0;
@@ -97,29 +109,74 @@
     }
 
     [JSInvokable]
-    public Task UpdateStatus(int remaining, int shots, bool victory, bool ready)
+    public async Task UpdateStatus(int remaining, int shots, bool victory, bool ready)
     {
         _remainingBalls = remaining;
         _shots = shots;
         _victory = victory;
         _canShoot = ready && !victory;
-        StateHasChanged();
-        return Task.CompletedTask;
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_objRef is not null)
+        if (_module is not null)
         {
             try
             {
-                await JS.InvokeVoidAsync("billiardGame.dispose", _canvasRef);
+                await _module.InvokeVoidAsync("dispose", _canvasRef);
             }
             catch
             {
             }
-
-            _objRef.Dispose();
+            await _module.DisposeAsync();
+            _module = null;
         }
+
+        if (_objRef is not null)
+        {
+            _objRef.Dispose();
+            _objRef = null;
+        }
+    }
+
+    private double Angle
+    {
+        get => _angle;
+        set
+        {
+            if (Math.Abs(_angle - value) < 0.01)
+            {
+                return;
+            }
+
+            _angle = value;
+            _ = UpdateAimAsync();
+        }
+    }
+
+    private double Power
+    {
+        get => _power;
+        set
+        {
+            if (Math.Abs(_power - value) < 0.01)
+            {
+                return;
+            }
+
+            _power = value;
+            _ = UpdateAimAsync();
+        }
+    }
+
+    private Task UpdateAimAsync()
+    {
+        if (_module is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _module.InvokeVoidAsync("updateAim", _canvasRef, _angle, _power).AsTask();
     }
 }
