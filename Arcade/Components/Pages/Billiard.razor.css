@@ -1,0 +1,167 @@
+:host {
+    display: block;
+}
+
+:global(.layout__main:has(.billiard-page)) {
+    width: min(960px, 94vw);
+    margin: clamp(1.4rem, 4.5vw, 2.6rem) auto;
+}
+
+.billiard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.6rem;
+    min-height: calc(100vh - 9rem);
+}
+
+.billiard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.billiard-header h1 {
+    font-size: clamp(2rem, 5vw, 2.6rem);
+    margin-bottom: 0.5rem;
+}
+
+.billiard-header p {
+    max-width: 38ch;
+    color: rgba(215, 228, 255, 0.75);
+    line-height: 1.6;
+}
+
+.billiard-stats {
+    display: flex;
+    gap: 1.2rem;
+    padding: 1rem 1.2rem;
+    border-radius: 18px;
+    background: rgba(12, 26, 54, 0.72);
+    box-shadow: 0 14px 32px rgba(8, 18, 42, 0.45);
+}
+
+.billiard-stats span {
+    display: block;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(160, 190, 240, 0.72);
+}
+
+.billiard-stats strong {
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+
+.billiard-table {
+    position: relative;
+    border-radius: 24px;
+    padding: clamp(0.8rem, 2vw, 1.3rem);
+    background: radial-gradient(circle at 50% 50%, rgba(41, 143, 90, 0.9), rgba(19, 63, 42, 0.92));
+    box-shadow: 0 22px 48px rgba(3, 17, 24, 0.55);
+}
+
+.billiard-table canvas {
+    width: min(720px, 100%);
+    height: auto;
+    display: block;
+    border-radius: 18px;
+    background: transparent;
+}
+
+.billiard-message {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(5, 12, 26, 0.68);
+    border-radius: inherit;
+    text-align: center;
+    padding: 2rem;
+}
+
+.billiard-message h2 {
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    margin-bottom: 0.6rem;
+}
+
+.billiard-message p {
+    color: rgba(220, 234, 255, 0.78);
+}
+
+.billiard-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: center;
+}
+
+.billiard-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem 1.2rem;
+    border-radius: 16px;
+    background: rgba(10, 24, 52, 0.78);
+    box-shadow: 0 14px 32px rgba(7, 18, 40, 0.45);
+}
+
+.billiard-controls label span:first-child {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(164, 198, 255, 0.72);
+}
+
+.billiard-controls input[type="range"] {
+    accent-color: #44e0a8;
+}
+
+.billiard-controls .value {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.billiard-controls .buttons {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.billiard-tip {
+    margin: 0;
+    color: rgba(204, 220, 255, 0.65);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+    :global(.layout__main:has(.billiard-page)) {
+        width: min(720px, 96vw);
+    }
+
+    .billiard-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .billiard-controls .buttons {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .billiard-stats {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .billiard-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .billiard-page {
+        min-height: calc(100vh - 7rem);
+    }
+}

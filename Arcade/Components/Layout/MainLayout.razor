@@ -1,23 +1,25 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+<div class="layout">
+    <header class="layout__header">
+        <NavLink class="layout__brand" href="/" Match="NavLinkMatch.All">Arcade</NavLink>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+        <nav class="layout__nav" aria-label="Spielnavigation">
+            <NavLink class="layout__nav-link" href="/tetris">Tetris</NavLink>
+            <NavLink class="layout__nav-link" href="/billiard">Billiard</NavLink>
+            <span class="layout__nav-link layout__nav-link--disabled" aria-disabled="true">Schach (bald)</span>
+        </nav>
 
-        <article class="content px-4">
-            @Body
-        </article>
+        <NavLink class="layout__login" href="/anmelden">Anmelden</NavLink>
+    </header>
+
+    <main class="layout__main">
+        @Body
     </main>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    Ein unbehandelter Fehler ist aufgetreten.
+    <a href="." class="reload">Neu laden</a>
     <span class="dismiss">🗙</span>
 </div>

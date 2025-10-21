@@ -1,0 +1,125 @@
+@page "/billiard"
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@using System.Threading.Tasks
+
+<PageTitle>Billiard</PageTitle>
+
+<section class="billiard-page">
+    <header class="billiard-header">
+        <div>
+            <h1>Billiard</h1>
+            <p>Visiere die Objektkugeln an, kontrolliere den Stoß und versenke alle Kugeln so effizient wie möglich.</p>
+        </div>
+        <div class="billiard-stats">
+            <div>
+                <span>Kugeln übrig</span>
+                <strong>@_remainingBalls</strong>
+            </div>
+            <div>
+                <span>Stöße</span>
+                <strong>@_shots</strong>
+            </div>
+        </div>
+    </header>
+
+    <div class="billiard-table">
+        <canvas width="720" height="360" @ref="_canvasRef"></canvas>
+        @if (_victory)
+        {
+            <div class="billiard-message">
+                <h2>Alle Kugeln versenkt!</h2>
+                <p>Perfekt gespielt – versuche es noch schneller.</p>
+            </div>
+        }
+    </div>
+
+    <div class="billiard-controls">
+        <label>
+            <span>Winkel</span>
+            <input type="range" min="0" max="360" step="1" @bind="_angle" />
+            <span class="value">@_angle.ToString("F0")°</span>
+        </label>
+        <label>
+            <span>Kraft</span>
+            <input type="range" min="10" max="100" step="1" @bind="_power" />
+            <span class="value">@_power.ToString("F0")%</span>
+        </label>
+        <div class="buttons">
+            <button class="arcade-btn" @onclick="ShootAsync" disabled="@(!_canShoot)">Stoß</button>
+            <button class="arcade-btn secondary" @onclick="ResetAsync">Neu aufstellen</button>
+        </div>
+    </div>
+
+    <p class="billiard-tip">Ziehe den Schieberegler für den Winkel, um den Stoß auszurichten, und erhöhe die Kraft für weitere Distanzen.</p>
+</section>
+
+@code {
+    private ElementReference _canvasRef;
+    private DotNetObjectReference<Billiard>? _objRef;
+    private double _angle = 15;
+    private double _power = 55;
+    private int _remainingBalls = 3;
+    private int _shots;
+    private bool _victory;
+    private bool _canShoot = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _objRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("billiardGame.init", _canvasRef, _objRef);
+        }
+    }
+
+    private async Task ShootAsync()
+    {
+        if (!_canShoot)
+        {
+            return;
+        }
+
+        _canShoot = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("billiardGame.shoot", _canvasRef, _angle, _power);
+    }
+
+    private async Task ResetAsync()
+    {
+        await JS.InvokeVoidAsync("billiardGame.reset", _canvasRef);
+        _victory = false;
+        _remainingBalls = 3;
+        _shots = 0;
+        _canShoot = true;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task UpdateStatus(int remaining, int shots, bool victory, bool ready)
+    {
+        _remainingBalls = remaining;
+        _shots = shots;
+        _victory = victory;
+        _canShoot = ready && !victory;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_objRef is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("billiardGame.dispose", _canvasRef);
+            }
+            catch
+            {
+            }
+
+            _objRef.Dispose();
+        }
+    }
+}
