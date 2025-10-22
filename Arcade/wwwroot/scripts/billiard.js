@@ -1,6 +1,6 @@
 const games = new WeakMap();
 
-export function init(canvas, dotnetRef, initialAngle = 15, initialPower = 55) {
+export function init(canvas, dotnetRef) {
     if (!canvas) {
         return;
     }
@@ -22,40 +22,24 @@ export function init(canvas, dotnetRef, initialAngle = 15, initialPower = 55) {
         victory: false,
         animationId: null,
         wasMoving: false,
-        aim: {
-            angle: degToRad(initialAngle),
-            power: initialPower
-        }
+        maxDrag: 160,
+        maxForce: 18,
+        input: {
+            dragging: false,
+            startX: 0,
+            startY: 0,
+            currentX: 0,
+            currentY: 0,
+            powerRatio: 0,
+            angle: 0
+        },
+        listeners: []
     };
 
     games.set(canvas, state);
+    attachInput(state);
     resetState(state);
-    updateAimState(state, initialAngle, initialPower);
     loop(state);
-    notify(state);
-}
-
-export function shoot(canvas, angleDeg, power) {
-    const state = games.get(canvas);
-    if (!state || !state.ready || state.victory) {
-        return;
-    }
-
-    const cue = state.balls.find(b => b.cue);
-    if (!cue) {
-        return;
-    }
-
-    updateAimState(state, angleDeg, power);
-
-    const angle = state.aim.angle;
-    const strength = (power / 100) * 14;
-
-    cue.vx = Math.cos(angle) * strength;
-    cue.vy = Math.sin(angle) * strength;
-
-    state.shots += 1;
-    state.ready = false;
     notify(state);
 }
 
@@ -69,15 +53,6 @@ export function reset(canvas) {
     notify(state);
 }
 
-export function updateAim(canvas, angleDeg, power) {
-    const state = games.get(canvas);
-    if (!state) {
-        return;
-    }
-
-    updateAimState(state, angleDeg, power);
-}
-
 export function dispose(canvas) {
     const state = games.get(canvas);
     if (!state) {
@@ -88,16 +63,128 @@ export function dispose(canvas) {
         cancelAnimationFrame(state.animationId);
     }
 
+    for (const [event, handler] of state.listeners) {
+        state.canvas.removeEventListener(event, handler);
+    }
+
     games.delete(canvas);
+}
+
+function attachInput(state) {
+    const canvas = state.canvas;
+
+    const onPointerDown = (evt) => {
+        if (!state.ready || state.victory || evt.button !== 0) {
+            return;
+        }
+
+        const cue = state.balls.find((ball) => ball.cue && !ball.pocketed);
+        if (!cue) {
+            return;
+        }
+
+        const position = getCanvasPoint(canvas, evt);
+        const distance = Math.hypot(position.x - cue.x, position.y - cue.y);
+        if (distance > cue.radius + 24) {
+            return;
+        }
+
+        state.input.dragging = true;
+        state.input.startX = cue.x;
+        state.input.startY = cue.y;
+        state.input.currentX = position.x;
+        state.input.currentY = position.y;
+        updateInput(state);
+        canvas.setPointerCapture(evt.pointerId);
+    };
+
+    const onPointerMove = (evt) => {
+        if (!state.input.dragging) {
+            return;
+        }
+
+        const position = getCanvasPoint(canvas, evt);
+        state.input.currentX = position.x;
+        state.input.currentY = position.y;
+        updateInput(state);
+    };
+
+    const onPointerUp = (evt) => {
+        if (!state.input.dragging) {
+            return;
+        }
+
+        finishDrag(state, evt);
+    };
+
+    const onPointerCancel = (evt) => {
+        if (!state.input.dragging) {
+            return;
+        }
+
+        state.input.dragging = false;
+        state.input.powerRatio = 0;
+        try {
+            canvas.releasePointerCapture(evt.pointerId);
+        } catch (err) {
+        }
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerCancel);
+    canvas.addEventListener('pointercancel', onPointerCancel);
+
+    state.listeners = [
+        ['pointerdown', onPointerDown],
+        ['pointermove', onPointerMove],
+        ['pointerup', onPointerUp],
+        ['pointerleave', onPointerCancel],
+        ['pointercancel', onPointerCancel]
+    ];
+}
+
+function finishDrag(state, evt) {
+    const canvas = state.canvas;
+    try {
+        canvas.releasePointerCapture(evt.pointerId);
+    } catch (err) {
+    }
+
+    const cue = state.balls.find((ball) => ball.cue && !ball.pocketed);
+    const { powerRatio, angle } = updateInput(state);
+
+    state.input.dragging = false;
+    state.input.powerRatio = 0;
+
+    if (!cue || powerRatio <= 0) {
+        return;
+    }
+
+    const totalForce = powerRatio * state.maxForce;
+    const ax = totalForce * Math.cos(angle);
+    const ay = totalForce * Math.sin(angle);
+
+    // Nach dem Satz des Pythagoras gilt ax^2 + ay^2 = totalForce^2.
+    // Bei 45° liefert cos(45°) = sin(45°) = 1/√2, daher ergeben sich gleiche Komponenten ≈ 0.7071 * totalForce.
+    cue.vx += ax;
+    cue.vy += ay;
+
+    state.shots += 1;
+    state.ready = false;
+    notify(state);
 }
 
 function resetState(state) {
     state.balls = createBalls(state);
     state.shots = 0;
-    state.remaining = state.balls.filter(b => !b.cue).length;
+    state.remaining = state.balls.filter((ball) => !ball.cue).length;
     state.ready = true;
     state.victory = false;
     state.wasMoving = false;
+    state.input.dragging = false;
+    state.input.powerRatio = 0;
 }
 
 function createBalls(state) {
@@ -106,10 +193,10 @@ function createBalls(state) {
     const spacing = 36;
 
     return [
-        createBall(state.cushion + 120, centerY, "#ffffff", true),
-        createBall(targetBaseX, centerY, "#ffce54"),
-        createBall(targetBaseX + spacing, centerY - spacing / 2, "#55d4ff"),
-        createBall(targetBaseX + spacing, centerY + spacing / 2, "#ff6b7a")
+        createBall(state.cushion + 120, centerY, '#ffffff', true),
+        createBall(targetBaseX, centerY, '#ffce54'),
+        createBall(targetBaseX + spacing, centerY - spacing / 2, '#55d4ff'),
+        createBall(targetBaseX + spacing, centerY + spacing / 2, '#ff6b7a')
     ];
 }
 
@@ -282,20 +369,20 @@ function draw(state) {
         drawBall(ctx, ball);
     }
 
-    if (state.ready && !state.victory) {
+    if ((state.ready && !state.victory) || state.input.dragging) {
         drawAim(state);
     }
 }
 
 function drawTable(ctx, state) {
     ctx.save();
-    ctx.fillStyle = "#134633";
+    ctx.fillStyle = '#134633';
     ctx.fillRect(0, 0, state.width, state.height);
 
-    ctx.fillStyle = "#1d7a4f";
+    ctx.fillStyle = '#1d7a4f';
     ctx.fillRect(state.cushion, state.cushion, state.width - state.cushion * 2, state.height - state.cushion * 2);
 
-    ctx.strokeStyle = "rgba(10, 20, 16, 0.65)";
+    ctx.strokeStyle = 'rgba(10, 20, 16, 0.65)';
     ctx.lineWidth = 6;
     ctx.strokeRect(state.cushion + 3, state.cushion + 3, state.width - (state.cushion + 3) * 2, state.height - (state.cushion + 3) * 2);
     ctx.restore();
@@ -303,7 +390,7 @@ function drawTable(ctx, state) {
 
 function drawPockets(ctx, state) {
     ctx.save();
-    ctx.fillStyle = "#061012";
+    ctx.fillStyle = '#061012';
     const pocketOffsets = [
         [state.cushion, state.cushion],
         [state.width / 2, state.cushion - 10],
@@ -323,7 +410,7 @@ function drawPockets(ctx, state) {
 
 function drawBall(ctx, ball) {
     const gradient = ctx.createRadialGradient(ball.x - 4, ball.y - 4, ball.radius / 5, ball.x, ball.y, ball.radius);
-    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(0, '#ffffff');
     gradient.addColorStop(0.3, lighten(ball.color, 0.35));
     gradient.addColorStop(1, ball.color);
 
@@ -332,67 +419,107 @@ function drawBall(ctx, ball) {
     ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.lineWidth = 1.2;
     ctx.stroke();
 }
 
 function drawAim(state) {
-    const cue = state.balls.find(b => b.cue && !b.pocketed);
+    const cue = state.balls.find((ball) => ball.cue && !ball.pocketed);
     if (!cue) {
         return;
     }
 
     const ctx = state.ctx;
-    const length = 120 + (state.aim.power / 100) * 110;
-    const dx = Math.cos(state.aim.angle);
-    const dy = Math.sin(state.aim.angle);
-    const targetX = cue.x + dx * length;
-    const targetY = cue.y + dy * length;
-
     ctx.save();
-    ctx.lineCap = "round";
 
-    const glow = ctx.createLinearGradient(cue.x, cue.y, targetX, targetY);
-    glow.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-    glow.addColorStop(1, "rgba(68, 224, 168, 0.05)");
+    if (state.input.dragging) {
+        const angle = state.input.angle;
+        const normalized = state.input.powerRatio;
+        const length = 120 + normalized * 140;
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        const targetX = cue.x + dx * length;
+        const targetY = cue.y + dy * length;
 
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = glow;
-    ctx.beginPath();
-    ctx.moveTo(cue.x, cue.y);
-    ctx.lineTo(targetX, targetY);
-    ctx.stroke();
+        const glow = ctx.createLinearGradient(cue.x, cue.y, targetX, targetY);
+        glow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        glow.addColorStop(1, 'rgba(68, 224, 168, 0.05)');
 
-    ctx.setLineDash([9, 10]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(68, 224, 168, 0.4)";
-    ctx.beginPath();
-    ctx.moveTo(cue.x, cue.y);
-    ctx.lineTo(targetX, targetY);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-    const arcRadius = cue.radius + 12 + (state.aim.power / 120) * 14;
-    ctx.beginPath();
-    ctx.arc(cue.x, cue.y, arcRadius, state.aim.angle - 0.12, state.aim.angle + 0.12);
-    ctx.stroke();
-
-    const impact = findFirstImpact(state, cue, dx, dy);
-    if (impact) {
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = glow;
         ctx.beginPath();
-        ctx.arc(impact.ball.x, impact.ball.y, impact.ball.radius + 6, 0, Math.PI * 2);
+        ctx.moveTo(cue.x, cue.y);
+        ctx.lineTo(targetX, targetY);
         ctx.stroke();
 
-        ctx.fillStyle = "rgba(68, 224, 168, 0.18)";
+        ctx.setLineDash([9, 10]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(68, 224, 168, 0.4)';
         ctx.beginPath();
-        ctx.arc(impact.contact.x, impact.contact.y, cue.radius * 0.7, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(cue.x, cue.y);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        const arcRadius = cue.radius + 12 + normalized * 14;
+        ctx.beginPath();
+        ctx.arc(cue.x, cue.y, arcRadius, angle - 0.12, angle + 0.12);
+        ctx.stroke();
+
+        const impact = findFirstImpact(state, cue, dx, dy);
+        if (impact) {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.beginPath();
+            ctx.arc(impact.ball.x, impact.ball.y, impact.ball.radius + 6, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(68, 224, 168, 0.18)';
+            ctx.beginPath();
+            ctx.arc(impact.contact.x, impact.contact.y, cue.radius * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        drawPowerMeter(ctx, state, normalized);
+    } else {
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 6]);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.beginPath();
+        ctx.arc(cue.x, cue.y, cue.radius + 12, 0, Math.PI * 2);
+        ctx.stroke();
     }
+
+    ctx.restore();
+}
+
+function drawPowerMeter(ctx, state, normalized) {
+    const barWidth = 18;
+    const barHeight = 150;
+    const x = state.cushion / 2 - barWidth / 2;
+    const y = state.height - state.cushion - barHeight - 12;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(6, 15, 22, 0.75)';
+    ctx.fillRect(x - 8, y - 12, barWidth + 16, barHeight + 24);
+
+    ctx.fillStyle = 'rgba(38, 92, 64, 0.85)';
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    const filled = barHeight * normalized;
+    const gradient = ctx.createLinearGradient(0, y + barHeight, 0, y);
+    gradient.addColorStop(0, 'rgba(68, 224, 168, 0.25)');
+    gradient.addColorStop(1, 'rgba(68, 224, 168, 0.85)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y + barHeight - filled, barWidth, filled);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, barWidth, barHeight);
 
     ctx.restore();
 }
@@ -441,9 +568,24 @@ function findFirstImpact(state, cue, dx, dy) {
     return closest;
 }
 
-function updateAimState(state, angleDeg, power) {
-    state.aim.angle = degToRad(angleDeg);
-    state.aim.power = power;
+function updateInput(state) {
+    const dx = state.input.startX - state.input.currentX;
+    const dy = state.input.startY - state.input.currentY;
+    const distance = Math.hypot(dx, dy);
+    const clamped = Math.min(distance, state.maxDrag);
+    state.input.powerRatio = clamped / state.maxDrag;
+    state.input.angle = Math.atan2(dy, dx);
+    return { powerRatio: state.input.powerRatio, angle: state.input.angle };
+}
+
+function getCanvasPoint(canvas, evt) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+        x: (evt.clientX - rect.left) * scaleX,
+        y: (evt.clientY - rect.top) * scaleY
+    };
 }
 
 function lighten(color, amount) {
@@ -458,10 +600,6 @@ function lighten(color, amount) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-function degToRad(value) {
-    return (value * Math.PI) / 180;
-}
-
 function notify(state) {
     if (!state.dotnetRef) {
         return;
@@ -469,7 +607,7 @@ function notify(state) {
 
     try {
         state.dotnetRef.invokeMethodAsync(
-            "UpdateStatus",
+            'UpdateStatus',
             state.remaining,
             state.shots,
             state.victory,
