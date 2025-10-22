@@ -126,41 +126,43 @@
         {
             while (!token.IsCancellationRequested)
             {
-                TimeSpan currentInterval;
+                TimeSpan interval;
                 lock (_engineLock)
-                {
-                    currentInterval = _engine.TickInterval;
-                }
+                    interval = _engine.TickInterval;
 
-                await using var timer = new PeriodicTimer(currentInterval);
+                using var timer = new PeriodicTimer(interval);
 
                 while (await timer.WaitForNextTickAsync(token))
                 {
                     if (!BeginTick())
-                    {
                         continue;
-                    }
 
-                    var skipUpdate = false;
-                    var intervalChanged = false;
-                    var highScoreUpdated = false;
+                    bool paused, gameOver;
+                    bool highScoreChanged = false;
+                    TimeSpan newInterval;
 
                     try
                     {
                         lock (_engineLock)
                         {
-                            if (_engine.IsPaused || _engine.IsGameOver)
+                            paused = _engine.IsPaused;
+                            gameOver = _engine.IsGameOver;
+
+                            if (paused || gameOver)
                             {
-                                skipUpdate = true;
+                                newInterval = interval; 
                             }
                             else
                             {
-                                var previousHighScore = _engine.HighScore;
-                                var previousInterval = currentInterval;
+                                var prevHigh = _engine.HighScore;
+                                var prevInterval = _engine.TickInterval;
+
                                 _engine.Tick();
-                                currentInterval = _engine.TickInterval;
-                                intervalChanged = _engine.TickInterval != previousInterval;
-                                highScoreUpdated = _engine.HighScore != previousHighScore;
+
+                                newInterval = _engine.TickInterval;
+                                highScoreChanged = _engine.HighScore != prevHigh;
+                                if (newInterval != prevInterval)
+                                    interval = newInterval;
                             }
                         }
                     }
@@ -168,23 +170,13 @@
                     {
                         EndTick();
                     }
-
-                    if (skipUpdate)
-                    {
+                    if (paused || gameOver)
                         continue;
-                    }
-
-                    if (highScoreUpdated)
-                    {
+                    if (highScoreChanged)
                         await SaveHighScoreAsync();
-                    }
-
                     await InvokeAsync(StateHasChanged);
-
-                    if (intervalChanged)
-                    {
+                    if (interval != timer.Period)
                         break;
-                    }
                 }
             }
         }
@@ -192,6 +184,7 @@
         {
         }
     }
+
 
     private bool BeginTick() => Interlocked.Exchange(ref _tickGuard, 1) == 0;
 
