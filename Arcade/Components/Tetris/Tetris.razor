@@ -162,9 +162,7 @@
         if (_engine.IsGameOver)
         {
             if (e.Key is " " or "Enter")
-            {
                 await ResetGameAsync();
-            }
             return;
         }
 
@@ -176,9 +174,7 @@
         }
 
         if (_engine.IsPaused)
-        {
             return;
-        }
 
         switch (e.Key)
         {
@@ -227,9 +223,7 @@
     private async Task HardDropAsync()
     {
         if (_engine.IsPaused || _engine.IsGameOver)
-        {
             return;
-        }
 
         _engine.HardDrop();
         await RefreshAsync();
@@ -245,31 +239,33 @@
     private async Task ResetGameAsync()
     {
         _engine.Reset();
-        await RestartTimerAsync();
+        RestartTimer();            // sync
         await FocusBoardAsync();
         StateHasChanged();
     }
 
     private async Task RefreshAsync()
     {
-        await SyncTimerAsync();
+        SyncTimer();               // sync
         StateHasChanged();
         ScheduleFlashReset();
+        await Task.CompletedTask;
     }
 
     private async Task StartGameLoopAsync()
     {
-        await DisposeLoopAsync();
+        DisposeLoop();                                 // sync
         _loopCts = new CancellationTokenSource();
         _currentInterval = _engine.TickInterval;
         _timer = new PeriodicTimer(_currentInterval);
         _ = RunGameLoopAsync(_loopCts.Token);
+        await Task.CompletedTask;
     }
 
-    private async Task RestartTimerAsync()
+    private void RestartTimer()
     {
         _currentInterval = _engine.TickInterval;
-        await ReplaceTimerAsync(_currentInterval);
+        ReplaceTimer(_currentInterval);                // sync
     }
 
     private async Task RunGameLoopAsync(CancellationToken token)
@@ -296,20 +292,16 @@
                 }
 
                 if (!tick)
-                {
                     continue;
-                }
 
                 if (_engine.IsPaused || _engine.IsGameOver)
-                {
                     continue;
-                }
 
                 _engine.Tick();
 
-                await InvokeAsync(async () =>
+                await InvokeAsync(() =>
                 {
-                    await SyncTimerAsync();
+                    SyncTimer();           // sync
                     StateHasChanged();
                     ScheduleFlashReset();
                 });
@@ -317,61 +309,55 @@
         }
         catch (OperationCanceledException)
         {
+            // normal beim Stoppen
         }
     }
 
-    private async Task SyncTimerAsync()
+    // --- Timer/Loop: synchrone, threadsichere Utilities ---
+
+    private void SyncTimer()
     {
         var target = _engine.TickInterval;
-        if (target != _currentInterval)
-        {
-            _currentInterval = target;
-            await ReplaceTimerAsync(target);
-        }
+        if (target == _currentInterval)
+            return;
+
+        _currentInterval = target;
+        ReplaceTimer(target);
     }
 
-    private async Task ReplaceTimerAsync(TimeSpan interval)
+    private void ReplaceTimer(TimeSpan interval)
     {
-        var old = _timer;
-        _timer = new PeriodicTimer(interval);
-        if (old is not null)
-        {
-            await old.DisposeAsync();
-        }
+        var old = Interlocked.Exchange(ref _timer, new PeriodicTimer(interval));
+        old?.Dispose(); // PeriodicTimer hat nur Dispose(), kein DisposeAsync
     }
 
-    private async Task DisposeLoopAsync()
+    private void DisposeLoop()
     {
-        if (_loopCts is not null)
+        var cts = Interlocked.Exchange(ref _loopCts, null);
+        if (cts is not null)
         {
-            _loopCts.Cancel();
-            _loopCts.Dispose();
-            _loopCts = null;
+            try { cts.Cancel(); }
+            finally { cts.Dispose(); }
         }
 
-        if (_timer is not null)
-        {
-            await _timer.DisposeAsync();
-            _timer = null;
-        }
+        var t = Interlocked.Exchange(ref _timer, null);
+        t?.Dispose();
     }
+
+    // --- UI helpers ---
 
     private static IEnumerable<string> BuildMiniGrid(TetrominoType? type)
     {
         var grid = new string[16];
         if (type is null)
-        {
             return grid;
-        }
 
         var tetromino = Tetrominoes.Get(type.Value);
         foreach (var cell in tetromino.GetRotation(0))
         {
             var index = cell.Row * 4 + cell.Col;
             if ((uint)index < grid.Length)
-            {
                 grid[index] = $"filled {tetromino.CssClass}";
-            }
         }
 
         return grid;
@@ -411,9 +397,7 @@
         for (var i = 0; i < cells.Count; i++)
         {
             if (cells[i].Row == row && cells[i].Col == col)
-            {
                 return true;
-            }
         }
 
         return false;
@@ -427,25 +411,23 @@
         }
         catch
         {
+            // ignore
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await DisposeLoopAsync();
+        DisposeLoop(); // sync cleanup
+        return ValueTask.CompletedTask;
     }
 
     private void ScheduleFlashReset()
     {
         if (_engine.LastClearedRows.Count == 0)
-        {
             return;
-        }
 
         if (_flashResetTask is { IsCompleted: false })
-        {
             return;
-        }
 
         _flashResetTask = ClearFlashAsync();
     }
@@ -458,11 +440,7 @@
             _engine.ResetLastClearedRows();
             await InvokeAsync(StateHasChanged);
         }
-        catch (ObjectDisposedException)
-        {
-        }
-        catch (InvalidOperationException)
-        {
-        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }
