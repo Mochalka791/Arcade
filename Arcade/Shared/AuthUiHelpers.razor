@@ -1,0 +1,14 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<AuthorizeView>
+    <Authorized>
+        <div class="auth-status auth-status-player">
+            Spieler: @context.User.Identity?.Name
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="auth-status auth-status-guest">
+            Gast-Modus
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
