@@ -1,0 +1,427 @@
+@page "/snake"
+@using System
+@using System.Collections.Generic
+@using System.Threading
+@using System.Threading.Tasks
+@using Arcade.Games.Snake
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<link rel="stylesheet" href="css/snake.css" />
+@{ var snapshot = Snapshot; }
+
+<div class="snake-page">
+    <div class="snake-hud">
+        <div class="hud-row">
+            <span><strong>Score:</strong> @snapshot.Score</span>
+            <span><strong>High Score:</strong> @snapshot.HighScore</span>
+            <span><strong>Speed:</strong> @Math.Round(snapshot.TickInterval.TotalMilliseconds) ms</span>
+            <span><strong>Status:</strong> @GetStatusText(snapshot)</span>
+            <span><strong>Wrap:</strong> @(snapshot.WrapWalls ? "On" : "Off")</span>
+        </div>
+        <div class="hud-row controls">
+            <button class="btn" @onclick="TogglePause">@GetPauseButtonLabel(snapshot)</button>
+            <button class="btn" @onclick="ResetGame">Reset</button>
+            <button class="btn" @onclick="ToggleWrap">@GetWrapButtonLabel(snapshot)</button>
+        </div>
+    </div>
+
+    <div class="snake-board" role="application" aria-label="Snake board">
+        <div class="board-grid" style="grid-template-columns: repeat(@SnakeEngine.Width, 1fr);">
+            @for (var y = 0; y < SnakeEngine.Height; y++)
+            {
+                for (var x = 0; x < SnakeEngine.Width; x++)
+                {
+                    var cellClass = GetCellClasses(x, y, snapshot);
+                    <div class="@cellClass" aria-hidden="true"></div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="snake-instructions">
+        <p><strong>Controls:</strong> Arrow keys / WASD to steer, Space to resume or restart, P to pause.</p>
+        <p>Use the buttons above on touch devices.</p>
+    </div>
+</div>
+
+@code {
+    private readonly SnakeEngine _engine = new();
+    private readonly object _engineLock = new();
+    private CancellationTokenSource? _loopCts;
+    private Task? _loopTask;
+    private int _tickGuard;
+    private DotNetObjectReference<Snake>? _selfReference;
+    private bool _scriptReady;
+
+    protected override async Task OnInitializedAsync()
+    {
+        lock (_engineLock)
+        {
+            _engine.Reset();
+        }
+
+        await StartLoopAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _selfReference = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("ArcadeSnake.register", _selfReference);
+        var stored = await JS.InvokeAsync<int?>("ArcadeSnake.getHighScore");
+        if (stored.HasValue)
+        {
+            lock (_engineLock)
+            {
+                _engine.HighScore = stored.Value;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        _scriptReady = true;
+        await SaveHighScoreAsync();
+    }
+
+    private async Task StartLoopAsync()
+    {
+        await StopLoopAsync();
+        _loopCts = new CancellationTokenSource();
+        _loopTask = RunLoopAsync(_loopCts.Token);
+    }
+
+    private async Task StopLoopAsync()
+    {
+        if (_loopCts is null)
+        {
+            return;
+        }
+
+        _loopCts.Cancel();
+        try
+        {
+            if (_loopTask is not null)
+            {
+                await _loopTask;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            _loopCts.Dispose();
+            _loopCts = null;
+            _loopTask = null;
+        }
+    }
+
+    private async Task RunLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                TimeSpan currentInterval;
+                lock (_engineLock)
+                {
+                    currentInterval = _engine.TickInterval;
+                }
+
+                await using var timer = new PeriodicTimer(currentInterval);
+
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    if (!BeginTick())
+                    {
+                        continue;
+                    }
+
+                    var skipUpdate = false;
+                    var intervalChanged = false;
+                    var highScoreUpdated = false;
+
+                    try
+                    {
+                        lock (_engineLock)
+                        {
+                            if (_engine.IsPaused || _engine.IsGameOver)
+                            {
+                                skipUpdate = true;
+                            }
+                            else
+                            {
+                                var previousHighScore = _engine.HighScore;
+                                var previousInterval = currentInterval;
+                                _engine.Tick();
+                                currentInterval = _engine.TickInterval;
+                                intervalChanged = _engine.TickInterval != previousInterval;
+                                highScoreUpdated = _engine.HighScore != previousHighScore;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        EndTick();
+                    }
+
+                    if (skipUpdate)
+                    {
+                        continue;
+                    }
+
+                    if (highScoreUpdated)
+                    {
+                        await SaveHighScoreAsync();
+                    }
+
+                    await InvokeAsync(StateHasChanged);
+
+                    if (intervalChanged)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private bool BeginTick() => Interlocked.Exchange(ref _tickGuard, 1) == 0;
+
+    private void EndTick() => Interlocked.Exchange(ref _tickGuard, 0);
+
+    private string GetCellClasses(int x, int y, SnakeSnapshot snapshot)
+    {
+        var classes = new List<string> { "cell" };
+
+        if (snapshot.Head.x == x && snapshot.Head.y == y)
+        {
+            classes.Add("head");
+            if (snapshot.AteFoodLastTick)
+            {
+                classes.Add("ate");
+            }
+        }
+        else if (snapshot.Body.Contains((x, y)))
+        {
+            classes.Add("snake");
+        }
+
+        if (snapshot.Food.x == x && snapshot.Food.y == y)
+        {
+            classes.Add("food");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private async Task SaveHighScoreAsync()
+    {
+        if (!_scriptReady)
+        {
+            return;
+        }
+
+        int highScore;
+        lock (_engineLock)
+        {
+            highScore = _engine.HighScore;
+        }
+
+        await JS.InvokeVoidAsync("ArcadeSnake.setHighScore", highScore);
+    }
+
+    private async Task TogglePause()
+    {
+        bool requiresRender;
+        bool requiresSave = false;
+
+        lock (_engineLock)
+        {
+            if (_engine.IsGameOver)
+            {
+                var wrap = _engine.WrapWalls;
+                _engine.Reset();
+                _engine.WrapWalls = wrap;
+                requiresSave = true;
+            }
+            else
+            {
+                _engine.TogglePause();
+            }
+
+            requiresRender = true;
+        }
+
+        if (requiresSave)
+        {
+            await SaveHighScoreAsync();
+        }
+
+        if (requiresRender)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ResetGame()
+    {
+        lock (_engineLock)
+        {
+            var wrap = _engine.WrapWalls;
+            _engine.Reset();
+            _engine.WrapWalls = wrap;
+        }
+
+        await SaveHighScoreAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleWrap()
+    {
+        lock (_engineLock)
+        {
+            _engine.WrapWalls = !_engine.WrapWalls;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task HandleKeyAsync(string key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return;
+        }
+
+        var requiresRender = false;
+        var requiresSave = false;
+
+        switch (key)
+        {
+            case "ArrowUp":
+            case "KeyW":
+                lock (_engineLock)
+                {
+                    _engine.TurnUp();
+                }
+                break;
+            case "ArrowDown":
+            case "KeyS":
+                lock (_engineLock)
+                {
+                    _engine.TurnDown();
+                }
+                break;
+            case "ArrowLeft":
+            case "KeyA":
+                lock (_engineLock)
+                {
+                    _engine.TurnLeft();
+                }
+                break;
+            case "ArrowRight":
+            case "KeyD":
+                lock (_engineLock)
+                {
+                    _engine.TurnRight();
+                }
+                break;
+            case "Space":
+                lock (_engineLock)
+                {
+                    if (_engine.IsGameOver)
+                    {
+                        var wrap = _engine.WrapWalls;
+                        _engine.Reset();
+                        _engine.WrapWalls = wrap;
+                        requiresSave = true;
+                    }
+                    else
+                    {
+                        _engine.Resume();
+                    }
+                }
+                requiresRender = true;
+                break;
+            case "KeyP":
+                lock (_engineLock)
+                {
+                    if (!_engine.IsGameOver)
+                    {
+                        _engine.TogglePause();
+                        requiresRender = true;
+                    }
+                }
+                break;
+        }
+
+        if (requiresSave)
+        {
+            await SaveHighScoreAsync();
+        }
+
+        if (requiresRender)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_selfReference is not null)
+        {
+            await JS.InvokeVoidAsync("ArcadeSnake.unregister");
+            _selfReference.Dispose();
+        }
+
+        await StopLoopAsync();
+    }
+
+    private string GetStatusText(SnakeSnapshot snapshot) => snapshot.IsGameOver ? "Game Over" : snapshot.IsPaused ? "Paused" : "Running";
+
+    private string GetPauseButtonLabel(SnakeSnapshot snapshot) => snapshot.IsGameOver ? "Restart" : snapshot.IsPaused ? "Resume" : "Pause";
+
+    private string GetWrapButtonLabel(SnakeSnapshot snapshot) => snapshot.WrapWalls ? "Disable Wrap" : "Enable Wrap";
+
+    private SnakeSnapshot Snapshot
+    {
+        get
+        {
+            lock (_engineLock)
+            {
+                return new SnakeSnapshot(
+                    Body: new HashSet<(int x, int y)>(_engine.Body),
+                    Head: _engine.Head,
+                    Food: _engine.FoodPosition,
+                    Score: _engine.Score,
+                    HighScore: _engine.HighScore,
+                    IsPaused: _engine.IsPaused,
+                    IsGameOver: _engine.IsGameOver,
+                    WrapWalls: _engine.WrapWalls,
+                    TickInterval: _engine.TickInterval,
+                    AteFoodLastTick: _engine.AteFoodLastTick);
+            }
+        }
+    }
+
+    private sealed record SnakeSnapshot(
+        HashSet<(int x, int y)> Body,
+        (int x, int y) Head,
+        (int x, int y) Food,
+        int Score,
+        int HighScore,
+        bool IsPaused,
+        bool IsGameOver,
+        bool WrapWalls,
+        TimeSpan TickInterval,
+        bool AteFoodLastTick);
+}
