@@ -1,11 +1,11 @@
 @page "/tetris"
 @using System
-@using Arcade.Games.Tetris
-@using Microsoft.AspNetCore.Components.Web
 @using System.Collections.Generic
 @using System.Linq
 @using System.Threading
 @using System.Threading.Tasks
+@using Microsoft.AspNetCore.Components.Web
+@using Arcade.Games.Tetris
 @implements IAsyncDisposable
 
 <PageTitle>Tetris</PageTitle>
@@ -135,7 +135,6 @@
 
 @code {
     private readonly TetrisEngine _engine = new();
-    private PeriodicTimer? _timer;
     private CancellationTokenSource? _loopCts;
     private TimeSpan _currentInterval;
     private bool _showDebug;
@@ -152,9 +151,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
-        {
             await FocusBoardAsync();
-        }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -239,33 +236,25 @@
     private async Task ResetGameAsync()
     {
         _engine.Reset();
-        RestartTimer();            // sync
         await FocusBoardAsync();
         StateHasChanged();
     }
 
     private async Task RefreshAsync()
     {
-        SyncTimer();               // sync
         StateHasChanged();
         ScheduleFlashReset();
         await Task.CompletedTask;
     }
 
+    // ---------- Game loop (Task.Delay statt PeriodicTimer) ----------
+
     private async Task StartGameLoopAsync()
     {
-        DisposeLoop();                                 // sync
+        DisposeLoop(); // alten Loop beenden
         _loopCts = new CancellationTokenSource();
-        _currentInterval = _engine.TickInterval;
-        _timer = new PeriodicTimer(_currentInterval);
         _ = RunGameLoopAsync(_loopCts.Token);
         await Task.CompletedTask;
-    }
-
-    private void RestartTimer()
-    {
-        _currentInterval = _engine.TickInterval;
-        ReplaceTimer(_currentInterval);                // sync
     }
 
     private async Task RunGameLoopAsync(CancellationToken token)
@@ -274,83 +263,46 @@
         {
             while (!token.IsCancellationRequested)
             {
-                var timer = _timer;
-                if (timer is null)
-                {
-                    await Task.Delay(20, token);
-                    continue;
-                }
+                // 1) aktuelles Intervall übernehmen (reagiert auf Level)
+                _currentInterval = _engine.TickInterval;
 
-                bool tick;
-                try
-                {
-                    tick = await timer.WaitForNextTickAsync(token);
-                }
-                catch (OperationCanceledException)
-                {
+                // 2) warten
+                await Task.Delay(_currentInterval, token);
+
+                if (token.IsCancellationRequested)
                     break;
-                }
-
-                if (!tick)
-                    continue;
 
                 if (_engine.IsPaused || _engine.IsGameOver)
                     continue;
 
+                // 3) Tick
                 _engine.Tick();
 
+                // 4) UI aktualisieren
                 await InvokeAsync(() =>
                 {
-                    SyncTimer();           // sync
                     StateHasChanged();
                     ScheduleFlashReset();
                 });
             }
         }
-        catch (OperationCanceledException)
-        {
-            // normal beim Stoppen
-        }
-    }
-
-    // --- Timer/Loop: synchrone, threadsichere Utilities ---
-
-    private void SyncTimer()
-    {
-        var target = _engine.TickInterval;
-        if (target == _currentInterval)
-            return;
-
-        _currentInterval = target;
-        ReplaceTimer(target);
-    }
-
-    private void ReplaceTimer(TimeSpan interval)
-    {
-        var old = Interlocked.Exchange(ref _timer, new PeriodicTimer(interval));
-        old?.Dispose(); // PeriodicTimer hat nur Dispose(), kein DisposeAsync
+        catch (OperationCanceledException) { /* normal beim Stoppen */ }
     }
 
     private void DisposeLoop()
     {
         var cts = Interlocked.Exchange(ref _loopCts, null);
-        if (cts is not null)
-        {
-            try { cts.Cancel(); }
-            finally { cts.Dispose(); }
-        }
-
-        var t = Interlocked.Exchange(ref _timer, null);
-        t?.Dispose();
+        if (cts is null) return;
+        try { cts.Cancel(); }
+        finally { cts.Dispose(); }
     }
 
-    // --- UI helpers ---
+    // ---------- UI helpers ----------
 
     private static IEnumerable<string> BuildMiniGrid(TetrominoType? type)
     {
         var grid = new string[16];
-        if (type is null)
-            return grid;
+        if (type is null) return grid;
 
         var tetromino = Tetrominoes.Get(type.Value);
         foreach (var cell in tetromino.GetRotation(0))
@@ -359,7 +311,6 @@
             if ((uint)index < grid.Length)
                 grid[index] = $"filled {tetromino.CssClass}";
         }
-
         return grid;
     }
 
@@ -395,40 +346,26 @@
     private static bool ContainsCell(IReadOnlyList<BoardPoint> cells, int row, int col)
     {
         for (var i = 0; i < cells.Count; i++)
-        {
             if (cells[i].Row == row && cells[i].Col == col)
                 return true;
-        }
-
         return false;
     }
 
     private async Task FocusBoardAsync()
     {
-        try
-        {
-            await _boardRef.FocusAsync();
-        }
-        catch
-        {
-            // ignore
-        }
+        try { await _boardRef.FocusAsync(); } catch { }
     }
 
     public ValueTask DisposeAsync()
     {
-        DisposeLoop(); // sync cleanup
+        DisposeLoop();
         return ValueTask.CompletedTask;
     }
 
     private void ScheduleFlashReset()
     {
-        if (_engine.LastClearedRows.Count == 0)
-            return;
-
-        if (_flashResetTask is { IsCompleted: false })
-            return;
-
+        if (_engine.LastClearedRows.Count == 0) return;
+        if (_flashResetTask is { IsCompleted: false }) return;
         _flashResetTask = ClearFlashAsync();
     }
 

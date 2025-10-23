@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Arcade.Models;
+namespace Arcade.Data.Models;
 
 public class User
 {
