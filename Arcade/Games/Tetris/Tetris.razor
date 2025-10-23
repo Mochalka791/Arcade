@@ -16,7 +16,6 @@
     <header class="tetris__header">
         <div>
             <h1>Tetris</h1>
-            <p>Steuere die fallenden Tetrominos, räume Linien ab und jage den Highscore.</p>
         </div>
         <div class="tetris__actions">
             <button class="arcade-btn" @onclick="TogglePause" disabled="@_engine.IsGameOver">@(_engine.IsPaused ? "Fortsetzen" : "Pause")</button>
@@ -64,10 +63,6 @@
                 <h2>Linien</h2>
                 <p>@_engine.LinesCleared</p>
             </div>
-            <div class="tetris__panel">
-                <h2>Status</h2>
-                <p>@StatusText</p>
-            </div>
 
             <div class="tetris__panel mini">
                 <h2>Hold</h2>
@@ -96,19 +91,6 @@
                     {
                         <li class="@Tetrominoes.Get(piece).CssClass">@piece</li>
                     }
-                </ul>
-            </div>
-
-            <div class="tetris__panel controls">
-                <h2>Steuerung</h2>
-                <ul>
-                    <li><span>←/→</span> Bewegung</li>
-                    <li><span>↑</span> Drehung Uhrzeigersinn</li>
-                    <li><span>Z</span> Drehung gegen Uhr</li>
-                    <li><span>↓</span> Soft Drop (+1)</li>
-                    <li><span>Space</span> Hard Drop (+2)</li>
-                    <li><span>Shift</span> Hold</li>
-                    <li><span>P</span> Pause</li>
                 </ul>
             </div>
 
