@@ -166,3 +166,16 @@
     color: inherit;
     text-decoration: underline;
 }
+
+.layout__nav-link {
+    display: inline-flex; 
+    align-items: center; 
+    padding: .35rem .6rem; 
+}
+
+    .layout__nav-link.active {
+        color: #f5f9ff;
+    }
+
+.layout__login.layout__nav-link { 
+}
