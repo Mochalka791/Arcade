@@ -43,8 +43,7 @@
     {
         if (_cts is null) return;
         _cts.Cancel();
-        try { if (_loop is not null) await _loop; }
-        catch (OperationCanceledException) { }
+        try { if (_loop is not null) await _loop; } catch (OperationCanceledException) { }
         finally { _cts.Dispose(); _cts = null; _loop = null; }
     }
 
@@ -236,23 +235,36 @@
         </div>
     </div>
 
-    <div class="snake-board" role="application" aria-label="Snake board">
-        <div class="board-grid"
-             @ref="_gridRef"
-             tabindex="0"
-             @onkeydown="OnKeyDown"
-             @onkeydown:preventDefault
-             @onkeydown:stopPropagation
-             style="grid-template-columns: repeat(@SnakeEngine.Width, 1fr);
-                    grid-template-rows:    repeat(@SnakeEngine.Height, 1fr);">
-            @for (var y = 0; y < SnakeEngine.Height; y++)
+    private SnakeSnapshot Snapshot
+    {
+        get
+        {
+            lock (_engineLock)
             {
-                for (var x = 0; x < SnakeEngine.Width; x++)
-                {
-                    var cellClass = GetCellClasses(x, y, s);
-                    <div class="@cellClass" aria-hidden="true"></div>
-                }
+                return new SnakeSnapshot(
+                    Body: new HashSet<(int x, int y)>(_engine.Body),
+                    Head: _engine.Head,
+                    Food: _engine.FoodPosition,
+                    Score: _engine.Score,
+                    HighScore: _engine.HighScore,
+                    IsPaused: _engine.IsPaused,
+                    IsGameOver: _engine.IsGameOver,
+                    WrapWalls: _engine.WrapWalls,
+                    TickInterval: _engine.TickInterval,
+                    AteFoodLastTick: _engine.AteFoodLastTick);
             }
-        </div>
-    </div>
-</div>
+        }
+    }
+
+    private sealed record SnakeSnapshot(
+        HashSet<(int x, int y)> Body,
+        (int x, int y) Head,
+        (int x, int y) Food,
+        int Score,
+        int HighScore,
+        bool IsPaused,
+        bool IsGameOver,
+        bool WrapWalls,
+        TimeSpan TickInterval,
+        bool AteFoodLastTick);
+}
