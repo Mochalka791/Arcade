@@ -70,12 +70,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender || _scriptReady)
         {
             return;
         }
 
-        _selfReference = DotNetObjectReference.Create(this);
+        _selfReference ??= DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("ArcadeSnake.register", _selfReference);
         var stored = await JS.InvokeAsync<int?>("ArcadeSnake.getHighScore");
         if (stored.HasValue)
@@ -376,7 +376,10 @@
     {
         if (_selfReference is not null)
         {
-            await JS.InvokeVoidAsync("ArcadeSnake.unregister");
+            if (_scriptReady)
+            {
+                await JS.InvokeVoidAsync("ArcadeSnake.unregister");
+            }
             _selfReference.Dispose();
         }
 
