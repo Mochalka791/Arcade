@@ -3,13 +3,13 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Security.Claims;
 using Arcade.Data;
-using Arcade.Dtos;
-using Arcade.Models;
+using Arcade.Data.Dtos;
+using Arcade.Data.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
-namespace Arcade.Security;
+namespace Arcade.Data.Security;
 
 public static class AuthEndpointExtensions
 {

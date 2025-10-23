@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Arcade.Dtos;
+namespace Arcade.Data.Dtos;
 
 public record RegisterDto
 {

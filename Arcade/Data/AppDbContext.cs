@@ -1,4 +1,4 @@
-using Arcade.Models;
+using Arcade.Data.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Arcade.Data;

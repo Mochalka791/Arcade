@@ -1,6 +1,6 @@
 using Arcade.Components;
 using Arcade.Data;
-using Arcade.Security;
+using Arcade.Data.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 

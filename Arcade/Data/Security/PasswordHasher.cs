@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Arcade.Security;
+namespace Arcade.Data.Security;
 
 public class PasswordHasher
 {
