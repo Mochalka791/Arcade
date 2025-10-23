@@ -56,6 +56,7 @@
     private Task? _loopTask;
     private int _tickGuard;
     private DotNetObjectReference<Snake>? _selfReference;
+    private IJSObjectReference? _snakeModule;
     private bool _scriptReady;
 
     protected override async Task OnInitializedAsync()
@@ -76,8 +77,10 @@
         }
 
         _selfReference ??= DotNetObjectReference.Create(this);
-        await JS.InvokeVoidAsync("ArcadeSnake.register", _selfReference);
-        var stored = await JS.InvokeAsync<int?>("ArcadeSnake.getHighScore");
+        _snakeModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "/scripts/snake.js");
+
+        await _snakeModule.InvokeVoidAsync("register", _selfReference);
+        var stored = await _snakeModule.InvokeAsync<int?>("getHighScore");
         if (stored.HasValue)
         {
             lock (_engineLock)
@@ -232,7 +235,12 @@
             highScore = _engine.HighScore;
         }
 
-        await JS.InvokeVoidAsync("ArcadeSnake.setHighScore", highScore);
+        if (_snakeModule is null)
+        {
+            return;
+        }
+
+        await _snakeModule.InvokeVoidAsync("setHighScore", highScore);
     }
 
     private async Task TogglePause()
@@ -374,13 +382,24 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (_selfReference is not null)
+        try
         {
-            if (_scriptReady)
+            if (_scriptReady && _snakeModule is not null)
             {
-                await JS.InvokeVoidAsync("ArcadeSnake.unregister");
+                await _snakeModule.InvokeVoidAsync("unregister");
             }
-            _selfReference.Dispose();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        _selfReference?.Dispose();
+        _selfReference = null;
+
+        if (_snakeModule is not null)
+        {
+            await _snakeModule.DisposeAsync();
+            _snakeModule = null;
         }
 
         await StopLoopAsync();
