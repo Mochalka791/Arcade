@@ -1,52 +1,54 @@
 const handledCodes = new Set([
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "KeyW",
-    "KeyA",
-    "KeyS",
-    "KeyD",
-    "Space",
-    "KeyP"
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "KeyW", "KeyA", "KeyS", "KeyD",
+    "Space", "KeyP"
 ]);
 
 let dotNetRef = null;
+let isRegistered = false;
 
 function onKeyDown(event) {
-    if (!dotNetRef || !handledCodes.has(event.code)) {
-        return;
-    }
+    if (!dotNetRef) return;
+
+    const code = event.code || "";
+    if (!handledCodes.has(code)) return;
 
     event.preventDefault();
-    dotNetRef.invokeMethodAsync("HandleKeyAsync", event.code);
+
+    dotNetRef.invokeMethodAsync("HandleKeyAsync", code).catch(() => { });
 }
 
 export function register(reference) {
     dotNetRef = reference;
-    window.addEventListener("keydown", onKeyDown);
+    if (!isRegistered) {
+        window.addEventListener("keydown", onKeyDown, { passive: false });
+        isRegistered = true;
+    }
 }
 
 export function unregister() {
-    window.removeEventListener("keydown", onKeyDown);
+    if (isRegistered) {
+        window.removeEventListener("keydown", onKeyDown);
+        isRegistered = false;
+    }
     dotNetRef = null;
 }
 
 export function getHighScore() {
-    const stored = window.localStorage.getItem("arcade_snake_high_score");
-    if (!stored) {
+    try {
+        const stored = window.localStorage.getItem("arcade_snake_high_score");
+        if (!stored) return null;
+        const value = parseInt(stored, 10);
+        return Number.isNaN(value) ? null : value;
+    } catch {
         return null;
     }
-
-    const value = parseInt(stored, 10);
-    return Number.isNaN(value) ? null : value;
 }
 
 export function setHighScore(value) {
-    if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
-        return;
+    try {
+        if (typeof value !== "number" || Number.isNaN(value) || value < 0) return;
+        window.localStorage.setItem("arcade_snake_high_score", String(value));
+    } catch {
     }
-
-    window.localStorage.setItem("arcade_snake_high_score", value.toString());
 }
-
