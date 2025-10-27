@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <Content Include="Games\Snake\snake" />
-    <Content Include="Games\Tetris\tetris" />
   </ItemGroup>
 
   <ItemGroup>
