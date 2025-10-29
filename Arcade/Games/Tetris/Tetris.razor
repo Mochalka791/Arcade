@@ -50,7 +50,7 @@
             }
         </div>
 
-        <aside class="tetris__sidebar">
+        <aside class="tetris__sidebar-left">
             <div class="tetris__panel">
                 <h2>Score</h2>
                 <p>@_engine.Score</p>
@@ -63,7 +63,9 @@
                 <h2>Linien</h2>
                 <p>@_engine.LinesCleared</p>
             </div>
+        </aside>
 
+        <aside class="tetris__sidebar-right">
             <div class="tetris__panel mini">
                 <h2>Hold</h2>
                 <div class="mini-grid">
@@ -104,6 +106,7 @@
             }
         </aside>
     </div>
+
 
     @if (_engine.IsGameOver)
     {
