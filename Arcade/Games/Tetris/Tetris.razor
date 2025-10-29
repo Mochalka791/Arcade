@@ -124,16 +124,18 @@
     private bool _showDebug;
     private ElementReference _boardRef;
     private Task? _flashResetTask;
+    private bool _loopStarted;
 
     private string StatusText => _engine.IsGameOver ? "Game Over" : _engine.IsPaused ? "Pause" : "Läuft";
 
-    protected override async Task OnInitializedAsync()
-    {
-        await StartGameLoopAsync();
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!_loopStarted)
+        {
+            await StartGameLoopAsync();
+            _loopStarted = true;
+        }
+
         if (firstRender)
             await FocusBoardAsync();
     }
@@ -279,6 +281,7 @@
         if (cts is null) return;
         try { cts.Cancel(); }
         finally { cts.Dispose(); }
+        _loopStarted = false;
     }
 
     // ---------- UI helpers ----------
