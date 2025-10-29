@@ -6,15 +6,18 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
+// Razor Components mit Server-Interaktivität
+builder.Services
+    .AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// DB + Services
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=app.db"));
 
 builder.Services.AddScoped<PasswordHasher>();
 
+// AuthN/AuthZ
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -23,7 +26,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LogoutPath = "/abmelden";
         options.SlidingExpiration = true;
     });
-
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
@@ -36,13 +38,15 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapBlazorHub();
-app.UseAntiforgery();
+
+app.UseAntiforgery();                // wichtig vor MapRazorComponents
 app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+
+app.MapRazorComponents<App>()        // genau EINMAL
+   .AddInteractiveServerRenderMode();
 
 app.MapAuthEndpoints();
 

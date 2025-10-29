@@ -4,19 +4,20 @@ using System.Linq;
 
 namespace Arcade.Games.Snake;
 
-public class SnakeEngine
+public sealed class SnakeEngine
 {
     public const int Width = 20;
     public const int Height = 20;
 
-    private readonly Random _random = new();
-    private (int x, int y) _foodPosition;
+    private readonly Random _rng = new();
     private (int x, int y) _head;
+    private (int x, int y) _food;
     private int _foodsEaten;
 
-    public Queue<(int x, int y)> Snake { get; private set; } = new();
-    public Direction Dir { get; private set; } = Direction.Right;
     public HashSet<(int x, int y)> Body { get; } = new();
+    private Queue<(int x, int y)> Order { get; set; } = new();
+
+    public Direction Dir { get; private set; } = Direction.Right;
     public int Score { get; private set; }
     public int HighScore { get; set; }
     public bool IsPaused { get; private set; }
@@ -25,71 +26,52 @@ public class SnakeEngine
     public TimeSpan TickInterval { get; private set; } = TimeSpan.FromMilliseconds(180);
     public bool AteFoodLastTick { get; private set; }
 
-    public (int x, int y) FoodPosition => _foodPosition;
     public (int x, int y) Head => _head;
+    public (int x, int y) Food => _food;
 
     public void Reset()
     {
-        Snake = new Queue<(int x, int y)>();
+        Order = new Queue<(int x, int y)>();
         Body.Clear();
         Score = 0;
         IsPaused = false;
         IsGameOver = false;
+        Dir = Direction.Right;
         TickInterval = TimeSpan.FromMilliseconds(180);
         _foodsEaten = 0;
         AteFoodLastTick = false;
-        Dir = Direction.Right;
 
-        var startY = Height / 2;
-        var startX = Width / 2 - 1;
-
-        var initialSegments = new List<(int x, int y)>
+        var y = Height / 2;
+        var x = Width / 2 - 1;
+        var initial = new List<(int x, int y)> { (x - 2, y), (x - 1, y), (x, y) };
+        foreach (var seg in initial)
         {
-            (startX - 2, startY),
-            (startX - 1, startY),
-            (startX, startY)
-        };
-
-        foreach (var segment in initialSegments)
-        {
-            Snake.Enqueue(segment);
-            Body.Add(segment);
+            Order.Enqueue(seg);
+            Body.Add(seg);
         }
-
-        _head = initialSegments.Last();
-
+        _head = initial.Last();
         SpawnFood();
     }
 
     public bool Tick()
     {
-        if (IsPaused || IsGameOver)
-        {
-            return false;
-        }
+        if (IsPaused || IsGameOver) return false;
 
         AteFoodLastTick = false;
-        var head = _head;
-        var next = head;
-        switch (Dir)
+
+        // WICHTIG: next als BENANNTES Tupel deklarieren
+        (int x, int y) next = Dir switch
         {
-            case Direction.Up:
-                next = (head.x, head.y - 1);
-                break;
-            case Direction.Down:
-                next = (head.x, head.y + 1);
-                break;
-            case Direction.Left:
-                next = (head.x - 1, head.y);
-                break;
-            case Direction.Right:
-                next = (head.x + 1, head.y);
-                break;
-        }
+            Direction.Up => (_head.x, _head.y - 1),
+            Direction.Down => (_head.x, _head.y + 1),
+            Direction.Left => (_head.x - 1, _head.y),
+            _ => (_head.x + 1, _head.y),
+        };
 
         if (WrapWalls)
         {
-            next = ((next.x + Width) % Width, (next.y + Height) % Height);
+            // Optional: Namen beim Zuweisen explizit beibehalten
+            next = (x: (next.x + Width) % Width, y: (next.y + Height) % Height);
         }
         else
         {
@@ -100,12 +82,12 @@ public class SnakeEngine
             }
         }
 
-        var ateFood = next == _foodPosition;
-        var tail = Snake.Peek();
+        var eats = next == _food;
+        var tail = Order.Peek();
 
-        if (!ateFood)
+        if (!eats)
         {
-            Snake.Dequeue();
+            Order.Dequeue();
             Body.Remove(tail);
         }
 
@@ -115,113 +97,46 @@ public class SnakeEngine
             return false;
         }
 
-        Snake.Enqueue(next);
+        Order.Enqueue(next);
         Body.Add(next);
         _head = next;
 
-        if (ateFood)
+        if (eats)
         {
             Score += 10;
-            if (Score > HighScore)
-            {
-                HighScore = Score;
-            }
-
+            HighScore = Math.Max(HighScore, Score);
             _foodsEaten++;
-            UpdateSpeed();
-            SpawnFood();
             AteFoodLastTick = true;
+
+            if (_foodsEaten % 5 == 0)
+            {
+                var ms = Math.Max(80, (int)TickInterval.TotalMilliseconds - 15);
+                TickInterval = TimeSpan.FromMilliseconds(ms);
+            }
+            SpawnFood();
         }
 
         return true;
     }
 
     public void Pause() => IsPaused = true;
+    public void Resume() { if (!IsGameOver) IsPaused = false; }
+    public void TogglePause() { if (!IsGameOver) IsPaused = !IsPaused; }
 
-    public void Resume()
+    public void TurnLeft() { if (Dir != Direction.Right) Dir = Direction.Left; }
+    public void TurnRight() { if (Dir != Direction.Left) Dir = Direction.Right; }
+    public void TurnUp() { if (Dir != Direction.Down) Dir = Direction.Up; }
+    public void TurnDown() { if (Dir != Direction.Up) Dir = Direction.Down; }
+
+    private void SpawnFood()
     {
-        if (!IsGameOver)
-        {
-            IsPaused = false;
-        }
-    }
+        var free = Width * Height - Body.Count;
+        if (free <= 0) { IsGameOver = true; return; }
 
-    public void TogglePause()
-    {
-        if (IsGameOver)
-        {
-            return;
-        }
-
-        IsPaused = !IsPaused;
-    }
-
-    public void TurnLeft()
-    {
-        if (Dir != Direction.Right)
-        {
-            Dir = Direction.Left;
-        }
-    }
-
-    public void TurnRight()
-    {
-        if (Dir != Direction.Left)
-        {
-            Dir = Direction.Right;
-        }
-    }
-
-    public void TurnUp()
-    {
-        if (Dir != Direction.Down)
-        {
-            Dir = Direction.Up;
-        }
-    }
-
-    public void TurnDown()
-    {
-        if (Dir != Direction.Up)
-        {
-            Dir = Direction.Down;
-        }
-    }
-
-    public void SpawnFood()
-    {
-        var emptyCells = Width * Height - Body.Count;
-        if (emptyCells <= 0)
-        {
-            IsGameOver = true;
-            return;
-        }
-
-        (int x, int y) candidate;
-        do
-        {
-            candidate = (_random.Next(0, Width), _random.Next(0, Height));
-        } while (Body.Contains(candidate));
-
-        _foodPosition = candidate;
-    }
-
-    public bool HasFoodAt(int x, int y) => _foodPosition.x == x && _foodPosition.y == y;
-
-    private void UpdateSpeed()
-    {
-        if (_foodsEaten % 5 == 0)
-        {
-            var nextMs = Math.Max(80, (int)TickInterval.TotalMilliseconds - 15);
-            TickInterval = TimeSpan.FromMilliseconds(nextMs);
-        }
+        (int x, int y) p;
+        do { p = (_rng.Next(0, Width), _rng.Next(0, Height)); } while (Body.Contains(p));
+        _food = p;
     }
 }
 
-public enum Direction
-{
-    Up,
-    Down,
-    Left,
-    Right
-}
+public enum Direction { Up, Down, Left, Right }
