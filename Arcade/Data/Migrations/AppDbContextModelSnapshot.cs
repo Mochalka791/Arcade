@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Arcade.Migrations
+namespace Arcade.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
@@ -19,7 +19,7 @@ namespace Arcade.Migrations
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.0");
 
-            modelBuilder.Entity("Arcade.Models.User", b =>
+            modelBuilder.Entity("Arcade.Data.Models.User", b =>
             {
                 b.Property<int>("Id")
                     .ValueGeneratedOnAdd()
