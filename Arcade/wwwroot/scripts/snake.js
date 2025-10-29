@@ -1,54 +1,47 @@
-const handledCodes = new Set([
+const handled = new Set([
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-    "KeyW", "KeyA", "KeyS", "KeyD",
-    "Space", "KeyP"
+    "KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyP"
 ]);
 
-let dotNetRef = null;
-let isRegistered = false;
+let dotnet = null;
+let reg = false;
 
-function onKeyDown(event) {
-    if (!dotNetRef) return;
-
-    const code = event.code || "";
-    if (!handledCodes.has(code)) return;
-
-    event.preventDefault();
-
-    dotNetRef.invokeMethodAsync("HandleKeyAsync", code).catch(() => { });
+function onKeyDown(e) {
+    if (!dotnet) return;
+    const code = e.code || "";
+    if (!handled.has(code)) return;
+    e.preventDefault(); // verhindert Scrollen/Space
+    dotnet.invokeMethodAsync("HandleKeyAsync", code).catch(() => { });
 }
 
 export function register(reference) {
-    dotNetRef = reference;
-    if (!isRegistered) {
+    dotnet = reference;
+    if (!reg) {
         window.addEventListener("keydown", onKeyDown, { passive: false });
-        isRegistered = true;
+        reg = true;
     }
 }
 
 export function unregister() {
-    if (isRegistered) {
+    if (reg) {
         window.removeEventListener("keydown", onKeyDown);
-        isRegistered = false;
+        reg = false;
     }
-    dotNetRef = null;
+    dotnet = null;
 }
 
 export function getHighScore() {
     try {
-        const stored = window.localStorage.getItem("arcade_snake_high_score");
-        if (!stored) return null;
-        const value = parseInt(stored, 10);
-        return Number.isNaN(value) ? null : value;
-    } catch {
-        return null;
-    }
+        const v = window.localStorage.getItem("arcade_snake_high_score");
+        if (!v) return null;
+        const n = parseInt(v, 10);
+        return Number.isNaN(n) ? null : n;
+    } catch { return null; }
 }
 
 export function setHighScore(value) {
     try {
         if (typeof value !== "number" || Number.isNaN(value) || value < 0) return;
         window.localStorage.setItem("arcade_snake_high_score", String(value));
-    } catch {
-    }
+    } catch {/* ignore */ }
 }
