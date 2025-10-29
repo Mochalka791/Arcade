@@ -195,14 +195,17 @@
         await StopLoopAsync();
     }
 
-    // Snapshot für UI
-    private Snapshot snapshot
+    // Snapshot fÃ¼r UI
+    private Snapshot Snapshot
     {
         get
         {
-            lock (_lock) return new Snapshot(new HashSet<(int, int)>(_engine.Body), _engine.Head, _engine.Food,
-                                               _engine.Score, _engine.HighScore, _engine.IsPaused, _engine.IsGameOver,
-                                               _engine.WrapWalls, _engine.TickInterval, _engine.AteFoodLastTick);
+            lock (_lock)
+            {
+                return new Snapshot(new HashSet<(int, int)>(_engine.Body), _engine.Head, _engine.Food,
+                    _engine.Score, _engine.HighScore, _engine.IsPaused, _engine.IsGameOver,
+                    _engine.WrapWalls, _engine.TickInterval, _engine.AteFoodLastTick);
+            }
         }
     }
     private sealed record Snapshot(HashSet<(int x, int y)> Body, (int x, int y) Head, (int x, int y) Food,
@@ -218,6 +221,8 @@
         return string.Join(' ', cls);
     }
 }
+
+@{ var snapshot = Snapshot; }
 
 <div class="snake-page">
     <div class="snake-hud">
