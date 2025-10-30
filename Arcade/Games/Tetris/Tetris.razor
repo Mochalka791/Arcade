@@ -1,0 +1,373 @@
+@page "/tetris"
+@rendermode InteractiveServer
+@using System
+@using System.Collections.Generic
+@using System.Linq
+@using System.Threading
+@using System.Threading.Tasks
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Components.Web
+@using Arcade.Games.Tetris
+@implements IAsyncDisposable
+
+<PageTitle>Tetris</PageTitle>
+
+<section class="tetris">
+    <header class="tetris__header">
+        <div>
+            <h1>Tetris</h1>
+        </div>
+        <div class="tetris__actions">
+            <button class="arcade-btn" @onclick="TogglePause" disabled="@_engine.IsGameOver">@(_engine.IsPaused ? "Fortsetzen" : "Pause")</button>
+            <button class="arcade-btn" @onclick="ResetGameAsync">Neu starten</button>
+            <button class="arcade-btn" @onclick="HardDropAsync" disabled="@(_engine.IsPaused || _engine.IsGameOver)">Hard Drop</button>
+            <button class="arcade-btn secondary" @onclick="ToggleDebug">@(_showDebug ? "Debug aus" : "Debug an")</button>
+        </div>
+    </header>
+
+    <div class="tetris__layout">
+        <div class="tetris__board@(_engine.LastClearedRows.Count > 0 ? " flash" : string.Empty)"
+             tabindex="0"
+             role="application"
+             aria-label="Tetris-Spielfeld"
+             @onkeydown="HandleKeyDown"
+             @onkeydown:preventDefault="true"
+             @onkeydown:stopPropagation="true"
+             @onpointerdown="FocusBoardAsync"
+             @ref="_boardRef">
+            @{
+                var currentCells = _engine.GetCurrentCells();
+                var ghostCells = _engine.GetGhostCells();
+                var currentType = _engine.CurrentPiece;
+            }
+            @for (var row = 0; row < TetrisEngine.BoardHeight; row++)
+            {
+                @for (var col = 0; col < TetrisEngine.BoardWidth; col++)
+                {
+                    var classes = BuildCellClasses(row, col, currentCells, ghostCells, currentType);
+                    <div class="@classes"></div>
+                }
+            }
+        </div>
+
+        <aside class="tetris__sidebar-left">
+            <div class="tetris__panel">
+                <h2>Score</h2>
+                <p>@_engine.Score</p>
+            </div>
+            <div class="tetris__panel">
+                <h2>Level</h2>
+                <p>@_engine.Level</p>
+            </div>
+            <div class="tetris__panel">
+                <h2>Linien</h2>
+                <p>@_engine.LinesCleared</p>
+            </div>
+        </aside>
+
+        <aside class="tetris__sidebar-right">
+            <div class="tetris__panel mini">
+                <h2>Hold</h2>
+                <div class="mini-grid">
+                    @foreach (var cellClass in BuildMiniGrid(_engine.HoldPiece))
+                    {
+                        <div class="mini-cell @cellClass"></div>
+                    }
+                </div>
+            </div>
+
+            <div class="tetris__panel mini">
+                <h2>Next</h2>
+                @{
+                    var nextPieces = _engine.NextPieces;
+                    TetrominoType? nextPiece = nextPieces.Count > 0 ? nextPieces[0] : null;
+                }
+                <div class="mini-grid">
+                    @foreach (var cellClass in BuildMiniGrid(nextPiece))
+                    {
+                        <div class="mini-cell @cellClass"></div>
+                    }
+                </div>
+                <ul class="tetris__queue">
+                    @foreach (var piece in nextPieces.Skip(1).Take(4))
+                    {
+                        <li class="@Tetrominoes.Get(piece).CssClass">@piece</li>
+                    }
+                </ul>
+            </div>
+
+            @if (_showDebug)
+            {
+                <div class="tetris__panel debug">
+                    <h2>Debug</h2>
+                    <p>Intervall: @_currentInterval.TotalMilliseconds:F0 ms</p>
+                    <p>Queue: @string.Join(", ", _engine.NextPieces)</p>
+                </div>
+            }
+        </aside>
+    </div>
+
+
+    @if (_engine.IsGameOver)
+    {
+        <div class="tetris__overlay">
+            <div class="overlay-card">
+                <h2>Game Over</h2>
+                <p>Endstand: @_engine.Score Punkte</p>
+                <button class="arcade-btn" @onclick="ResetGameAsync">Noch eine Runde</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private readonly TetrisEngine _engine = new();
+    private CancellationTokenSource? _loopCts;
+    private TimeSpan _currentInterval;
+    private bool _showDebug;
+    private ElementReference _boardRef;
+    private Task? _flashResetTask;
+    private bool _loopStarted;
+
+    private string StatusText => _engine.IsGameOver ? "Game Over" : _engine.IsPaused ? "Pause" : "Läuft";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loopStarted)
+        {
+            await StartGameLoopAsync();
+            _loopStarted = true;
+        }
+
+        if (firstRender)
+            await FocusBoardAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (_engine.IsGameOver)
+        {
+            if (e.Key is " " or "Enter")
+                await ResetGameAsync();
+            return;
+        }
+
+        if (e.Key is "p" or "P")
+        {
+            _engine.TogglePause();
+            await RefreshAsync();
+            return;
+        }
+
+        if (_engine.IsPaused)
+            return;
+
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+            case "Left":
+                _engine.MoveLeft();
+                break;
+            case "ArrowRight":
+            case "Right":
+                _engine.MoveRight();
+                break;
+            case "ArrowDown":
+            case "Down":
+                _engine.SoftDrop();
+                break;
+            case "ArrowUp":
+            case "Up":
+                _engine.RotateClockwise();
+                break;
+            case "z":
+            case "Z":
+                _engine.RotateCounterClockwise();
+                break;
+            case " ":
+            case "Space":
+            case "Spacebar":
+                _engine.HardDrop();
+                break;
+            case "Shift":
+            case "ShiftLeft":
+            case "ShiftRight":
+                _engine.Hold();
+                break;
+        }
+
+        await RefreshAsync();
+    }
+
+    private async Task TogglePause()
+    {
+        _engine.TogglePause();
+        await RefreshAsync();
+        await FocusBoardAsync();
+    }
+
+    private async Task HardDropAsync()
+    {
+        if (_engine.IsPaused || _engine.IsGameOver)
+            return;
+
+        _engine.HardDrop();
+        await RefreshAsync();
+        await FocusBoardAsync();
+    }
+
+    private void ToggleDebug()
+    {
+        _showDebug = !_showDebug;
+        StateHasChanged();
+    }
+
+    private async Task ResetGameAsync()
+    {
+        _engine.Reset();
+        await FocusBoardAsync();
+        StateHasChanged();
+    }
+
+    private async Task RefreshAsync()
+    {
+        StateHasChanged();
+        ScheduleFlashReset();
+        await Task.CompletedTask;
+    }
+
+    // ---------- Game loop (Task.Delay statt PeriodicTimer) ----------
+
+    private async Task StartGameLoopAsync()
+    {
+        DisposeLoop(); // alten Loop beenden
+        _loopCts = new CancellationTokenSource();
+        _ = RunGameLoopAsync(_loopCts.Token);
+        await Task.CompletedTask;
+    }
+
+    private async Task RunGameLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // 1) aktuelles Intervall übernehmen (reagiert auf Level)
+                _currentInterval = _engine.TickInterval;
+
+                // 2) warten
+                await Task.Delay(_currentInterval, token);
+
+                if (token.IsCancellationRequested)
+                    break;
+
+                if (_engine.IsPaused || _engine.IsGameOver)
+                    continue;
+
+                // 3) Tick
+                _engine.Tick();
+
+                // 4) UI aktualisieren
+                await InvokeAsync(() =>
+                {
+                    StateHasChanged();
+                    ScheduleFlashReset();
+                });
+            }
+        }
+        catch (OperationCanceledException) { /* normal beim Stoppen */ }
+    }
+
+    private void DisposeLoop()
+    {
+        var cts = Interlocked.Exchange(ref _loopCts, null);
+        if (cts is null) return;
+        try { cts.Cancel(); }
+        finally { cts.Dispose(); }
+        _loopStarted = false;
+    }
+
+    // ---------- UI helpers ----------
+
+    private static IEnumerable<string> BuildMiniGrid(TetrominoType? type)
+    {
+        var grid = new string[16];
+        if (type is null) return grid;
+
+        var tetromino = Tetrominoes.Get(type.Value);
+        foreach (var cell in tetromino.GetRotation(0))
+        {
+            var index = cell.Row * 4 + cell.Col;
+            if ((uint)index < grid.Length)
+                grid[index] = $"filled {tetromino.CssClass}";
+        }
+        return grid;
+    }
+
+    private string BuildCellClasses(int row, int col, IReadOnlyList<BoardPoint> currentCells, IReadOnlyList<BoardPoint> ghostCells, TetrominoType? currentType)
+    {
+        var classes = new List<string> { "cell" };
+        var locked = _engine.GetLockedCell(row, col);
+
+        if (locked is TetrominoType lockedType)
+        {
+            classes.Add("filled");
+            classes.Add(Tetrominoes.Get(lockedType).CssClass);
+            return string.Join(' ', classes);
+        }
+
+        if (currentType is TetrominoType type)
+        {
+            if (ContainsCell(currentCells, row, col))
+            {
+                classes.Add("active");
+                classes.Add(Tetrominoes.Get(type).CssClass);
+            }
+            else if (ContainsCell(ghostCells, row, col))
+            {
+                classes.Add("ghost");
+                classes.Add(Tetrominoes.Get(type).CssClass);
+            }
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private static bool ContainsCell(IReadOnlyList<BoardPoint> cells, int row, int col)
+    {
+        for (var i = 0; i < cells.Count; i++)
+            if (cells[i].Row == row && cells[i].Col == col)
+                return true;
+        return false;
+    }
+
+    private async Task FocusBoardAsync()
+    {
+        try { await _boardRef.FocusAsync(); } catch { }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        DisposeLoop();
+        return ValueTask.CompletedTask;
+    }
+
+    private void ScheduleFlashReset()
+    {
+        if (_engine.LastClearedRows.Count == 0) return;
+        if (_flashResetTask is { IsCompleted: false }) return;
+        _flashResetTask = ClearFlashAsync();
+    }
+
+    private async Task ClearFlashAsync()
+    {
+        try
+        {
+            await Task.Delay(180);
+            _engine.ResetLastClearedRows();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+}

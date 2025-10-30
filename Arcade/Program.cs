@@ -1,20 +1,23 @@
 using Arcade.Components;
 using Arcade.Data;
-using Arcade.Security;
+using Arcade.Data.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
+// Razor Components mit Server-Interaktivität
+builder.Services
+    .AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// DB + Services
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=app.db"));
 
 builder.Services.AddScoped<PasswordHasher>();
 
+// AuthN/AuthZ
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -23,30 +26,27 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LogoutPath = "/abmelden";
         options.SlidingExpiration = true;
     });
-
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-
-app.UseAntiforgery();
-
+app.UseAntiforgery();                // wichtig vor MapRazorComponents
 app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+
+app.MapRazorComponents<App>()        // genau EINMAL
+   .AddInteractiveServerRenderMode();
 
 app.MapAuthEndpoints();
 

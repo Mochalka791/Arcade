@@ -5,10 +5,12 @@
 
 .layout {
     min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     position: relative;
-    padding-bottom: 2.4rem;
+    padding-bottom: clamp(0.8rem, 2vh, 1.6rem);
+    overflow: hidden;
 }
 
 .layout::after {
@@ -137,7 +139,11 @@
 .layout__main {
     flex: 1;
     width: min(1120px, 92vw);
-    margin: clamp(1.8rem, 6vw, 2.8rem) auto clamp(1.9rem, 6vw, 3.1rem);
+    margin: 0 auto;
+    padding: clamp(1rem, 3.5vh, 1.8rem) clamp(1.4rem, 5.5vw, 3rem);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 #blazor-error-ui {
@@ -165,4 +171,17 @@
 #blazor-error-ui .reload {
     color: inherit;
     text-decoration: underline;
+}
+
+.layout__nav-link {
+    display: inline-flex; 
+    align-items: center; 
+    padding: .35rem .6rem; 
+}
+
+    .layout__nav-link.active {
+        color: #f5f9ff;
+    }
+
+.layout__login.layout__nav-link { 
 }

@@ -1,0 +1,258 @@
+@page "/snake"
+@rendermode Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer
+@using System.Threading
+@using Arcade.Games.Snake
+@using Microsoft.AspNetCore.Components.Web
+
+@implements IAsyncDisposable
+
+@code {
+    private readonly SnakeEngine _engine = new();
+    private readonly object _lockObj = new();
+    private CancellationTokenSource? _cts;
+    private Task? _loop;
+    private int _tickGuard;
+
+    // Fokus fürs Grid
+    private ElementReference _gridRef;
+    private bool _focusedOnce;
+
+    protected override async Task OnInitializedAsync()
+    {
+        lock (_lockObj) _engine.Reset();
+        await StartLoopAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_focusedOnce)
+        {
+            _focusedOnce = true;
+            try { await _gridRef.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task StartLoopAsync()
+    {
+        await StopLoopAsync();
+        _cts = new CancellationTokenSource();
+        _loop = RunLoopAsync(_cts.Token);
+    }
+
+    private async Task StopLoopAsync()
+    {
+        if (_cts is null) return;
+        _cts.Cancel();
+        try { if (_loop is not null) await _loop; }
+        catch (OperationCanceledException) { }
+        finally { _cts.Dispose(); _cts = null; _loop = null; }
+    }
+
+    private async Task RunLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                TimeSpan interval;
+                lock (_lockObj) interval = _engine.TickInterval;
+
+                using var timer = new PeriodicTimer(interval);
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    var shouldRender = false;
+
+                    if (Interlocked.Exchange(ref _tickGuard, 1) == 0)
+                    {
+                        try
+                        {
+                            lock (_lockObj)
+                            {
+                                if (!_engine.IsPaused && !_engine.IsGameOver)
+                                {
+                                    _engine.Tick();
+                                    interval = _engine.TickInterval; // Speed-Änderung übernehmen
+                                    shouldRender = true;
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            Interlocked.Exchange(ref _tickGuard, 0);
+                        }
+                    }
+
+                    if (shouldRender)
+                        await InvokeAsync(StateHasChanged);
+
+                    if (interval != timer.Period)
+                        break; // Timer mit neuem Intervall erstellen
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private sealed record SnakeSnapshot(
+        HashSet<(int x, int y)> Body,
+        (int x, int y) Head,
+        (int x, int y) Food,
+        int Score,
+        int HighScore,
+        bool IsPaused,
+        bool IsGameOver,
+        bool WrapWalls,
+        TimeSpan TickInterval,
+        bool AteFoodLastTick);
+
+    private SnakeSnapshot Snapshot
+    {
+        get
+        {
+            lock (_lockObj)
+            {
+                return new SnakeSnapshot(
+                    new HashSet<(int x, int y)>(_engine.Body),
+                    _engine.Head,
+                    _engine.Food,   // Engine hat Food (ggf. Alias FoodPosition zusätzlich)
+                    _engine.Score,
+                    _engine.HighScore,
+                    _engine.IsPaused,
+                    _engine.IsGameOver,
+                    _engine.WrapWalls,
+                    _engine.TickInterval,
+                    _engine.AteFoodLastTick
+                );
+            }
+        }
+    }
+
+    private string GetStatusText(SnakeSnapshot s) => s.IsGameOver ? "Game Over" : s.IsPaused ? "Paused" : "Running";
+    private string GetPauseButtonLabel(SnakeSnapshot s) => s.IsGameOver ? "Restart" : s.IsPaused ? "Resume" : "Pause";
+    private string GetWrapButtonLabel(SnakeSnapshot s) => s.WrapWalls ? "Disable Wrap" : "Enable Wrap";
+
+    private string GetCellClasses(int x, int y, SnakeSnapshot s)
+    {
+        var cls = new List<string> { "cell" };
+        if (s.Head.x == x && s.Head.y == y) { cls.Add("head"); if (s.AteFoodLastTick) cls.Add("ate"); }
+        else if (s.Body.Contains((x, y))) cls.Add("snake");
+        if (s.Food.x == x && s.Food.y == y) cls.Add("food");
+        return string.Join(' ', cls);
+    }
+
+    private Task TogglePause()
+    {
+        lock (_lockObj)
+        {
+            if (_engine.IsGameOver)
+            {
+                var wrap = _engine.WrapWalls;
+                _engine.Reset();
+                _engine.WrapWalls = wrap;
+            }
+            else
+            {
+                _engine.TogglePause();
+            }
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ResetGame()
+    {
+        lock (_lockObj)
+        {
+            var w = _engine.WrapWalls;
+            _engine.Reset();
+            _engine.WrapWalls = w;
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ToggleWrap()
+    {
+        lock (_lockObj) _engine.WrapWalls = !_engine.WrapWalls;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs e)
+    {
+        lock (_lockObj)
+        {
+            switch (e.Code)
+            {
+                case "ArrowUp":
+                case "KeyW": _engine.TurnUp(); break;
+                case "ArrowDown":
+                case "KeyS": _engine.TurnDown(); break;
+                case "ArrowLeft":
+                case "KeyA": _engine.TurnLeft(); break;
+                case "ArrowRight":
+                case "KeyD": _engine.TurnRight(); break;
+                case "Space":
+                    if (_engine.IsGameOver)
+                    {
+                        var w = _engine.WrapWalls;
+                        _engine.Reset();
+                        _engine.WrapWalls = w;
+                    }
+                    else
+                    {
+                        _engine.Resume();
+                    }
+                    break;
+                case "KeyP":
+                    if (!_engine.IsGameOver) _engine.TogglePause();
+                    break;
+            }
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync() => await StopLoopAsync();
+}
+
+@{
+    var s = Snapshot;
+}
+
+<div class="snake-page">
+    <div class="snake-hud">
+        <div class="hud-row">
+            <span><strong>Score:</strong> @s.Score</span>
+            <span><strong>High Score:</strong> @s.HighScore</span>
+            <span><strong>Speed:</strong> @Math.Round(s.TickInterval.TotalMilliseconds) ms</span>
+            <span><strong>Status:</strong> @GetStatusText(s)</span>
+            <span><strong>Wrap:</strong> @(s.WrapWalls ? "On" : "Off")</span>
+        </div>
+        <div class="hud-row controls">
+            <button class="btn" @onclick="TogglePause">@GetPauseButtonLabel(s)</button>
+            <button class="btn" @onclick="ResetGame">Reset</button>
+            <button class="btn" @onclick="ToggleWrap">@GetWrapButtonLabel(s)</button>
+        </div>
+    </div>
+
+    <div class="snake-board" role="application" aria-label="Snake board">
+        <div class="board-grid"
+             @ref="_gridRef"
+             tabindex="0"
+             @onkeydown="OnKeyDown"
+             @onkeydown:preventDefault
+             @onkeydown:stopPropagation
+             style="grid-template-columns: repeat(@SnakeEngine.Width, 1fr);
+                    grid-template-rows:    repeat(@SnakeEngine.Height, 1fr);">
+            @for (var y = 0; y < SnakeEngine.Height; y++)
+            {
+                for (var x = 0; x < SnakeEngine.Width; x++)
+                {
+                    var cellClass = GetCellClasses(x, y, s);
+                    <div class="@cellClass" aria-hidden="true"></div>
+                }
+            }
+        </div>
+    </div>
+</div>

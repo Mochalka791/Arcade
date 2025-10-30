@@ -2,6 +2,8 @@
   "$schema": "https://json.schemastore.org/launchsettings.json",
     "profiles": {
       "http": {
+        "CircuitOptions.DetailedErrors": true,
+        "DetailedErrors": true,
         "commandName": "Project",
         "dotnetRunMessages": true,
         "launchBrowser": true,
@@ -11,6 +13,8 @@
         }
       },
       "https": {
+        "CircuitOptions.DetailedErrors": true, 
+        "DetailedErrors": true,
         "commandName": "Project",
         "dotnetRunMessages": true,
         "launchBrowser": true,

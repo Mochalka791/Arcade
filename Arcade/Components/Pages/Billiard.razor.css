@@ -69,6 +69,7 @@
     display: block;
     border-radius: 18px;
     background: transparent;
+    cursor: crosshair;
 }
 
 .billiard-message {
@@ -91,63 +92,41 @@
     color: rgba(220, 234, 255, 0.78);
 }
 
-.billiard-controls {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+.billiard-actions {
+    display: flex;
+    justify-content: space-between;
     gap: 1rem;
     align-items: center;
+    flex-wrap: wrap;
 }
 
-.billiard-controls label {
+.billiard-status {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.4rem;
     padding: 1rem 1.2rem;
     border-radius: 16px;
     background: rgba(10, 24, 52, 0.78);
     box-shadow: 0 14px 32px rgba(7, 18, 40, 0.45);
+    max-width: clamp(18rem, 60vw, 32rem);
 }
 
-.billiard-controls label span:first-child {
+.billiard-status span {
     font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: rgba(164, 198, 255, 0.72);
 }
 
-.billiard-controls input[type="range"] {
-    accent-color: #44e0a8;
-}
-
-.billiard-controls .value {
-    font-size: 1.2rem;
-    font-weight: 600;
-}
-
-.billiard-controls .buttons {
-    display: flex;
-    gap: 0.8rem;
-    justify-content: flex-end;
-    align-items: center;
-}
-
-.billiard-tip {
+.billiard-status p {
     margin: 0;
-    color: rgba(204, 220, 255, 0.65);
-    font-size: 0.9rem;
+    color: rgba(204, 220, 255, 0.75);
+    line-height: 1.5;
 }
 
 @media (max-width: 900px) {
     :global(.layout__main:has(.billiard-page)) {
         width: min(720px, 96vw);
-    }
-
-    .billiard-controls {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .billiard-controls .buttons {
-        justify-content: flex-start;
     }
 }
 
@@ -157,11 +136,20 @@
         justify-content: space-between;
     }
 
-    .billiard-controls {
-        grid-template-columns: 1fr;
-    }
-
     .billiard-page {
         min-height: calc(100vh - 7rem);
+    }
+
+    .billiard-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .billiard-status {
+        width: 100%;
+    }
+
+    .billiard-table canvas {
+        cursor: default;
     }
 }
