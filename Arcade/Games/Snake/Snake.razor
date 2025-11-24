@@ -12,6 +12,10 @@
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private int _tickGuard;
+    // record 
+    private List<SnakeRecord> _records = new();
+    private bool _recordSavedThisGame = false;
+
 
     // Fokus fürs Grid
     private ElementReference _gridRef;
@@ -81,18 +85,39 @@
                             Interlocked.Exchange(ref _tickGuard, 0);
                         }
                     }
+                    if (_engine.IsGameOver && interval != TimeSpan.Zero)
+                    {
+                        SaveRecord(_engine.Score);
+                    }
 
                     if (shouldRender)
                         await InvokeAsync(StateHasChanged);
 
                     if (interval != timer.Period)
-                        break; // Timer mit neuem Intervall erstellen
+                        break;
                 }
             }
         }
         catch (OperationCanceledException) { }
     }
 
+    private void SaveRecord(int score)
+    {
+        if (score <= 0) return;
+
+        _records.Add(new SnakeRecord
+        {
+            Score = score,
+            Date = DateTime.Now
+        });
+
+        _records = _records
+            .OrderByDescending(r => r.Score)
+            .Take(10)
+            .ToList();
+    }
+
+ 
     private sealed record SnakeSnapshot(
         HashSet<(int x, int y)> Body,
         (int x, int y) Head,
@@ -155,6 +180,7 @@
                 _engine.TogglePause();
             }
         }
+        _recordSavedThisGame = false;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -166,7 +192,9 @@
             var w = _engine.WrapWalls;
             _engine.Reset();
             _engine.WrapWalls = w;
+            _recordSavedThisGame = false;
         }
+
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -209,8 +237,10 @@
                     break;
             }
         }
+        _recordSavedThisGame = false;
         StateHasChanged();
         return Task.CompletedTask;
+
     }
 
     public async ValueTask DisposeAsync() => await StopLoopAsync();
@@ -221,38 +251,79 @@
 }
 
 <div class="snake-page">
-    <div class="snake-hud">
-        <div class="hud-row">
-            <span><strong>Score:</strong> @s.Score</span>
-            <span><strong>High Score:</strong> @s.HighScore</span>
-            <span><strong>Speed:</strong> @Math.Round(s.TickInterval.TotalMilliseconds) ms</span>
-            <span><strong>Status:</strong> @GetStatusText(s)</span>
-            <span><strong>Wrap:</strong> @(s.WrapWalls ? "On" : "Off")</span>
-        </div>
-        <div class="hud-row controls">
-            <button class="btn" @onclick="TogglePause">@GetPauseButtonLabel(s)</button>
-            <button class="btn" @onclick="ResetGame">Reset</button>
-            <button class="btn" @onclick="ToggleWrap">@GetWrapButtonLabel(s)</button>
-        </div>
-    </div>
+    <div class="snake-layout">
 
-    <div class="snake-board" role="application" aria-label="Snake board">
-        <div class="board-grid"
-             @ref="_gridRef"
-             tabindex="0"
-             @onkeydown="OnKeyDown"
-             @onkeydown:preventDefault
-             @onkeydown:stopPropagation
-             style="grid-template-columns: repeat(@SnakeEngine.Width, 1fr);
-                    grid-template-rows:    repeat(@SnakeEngine.Height, 1fr);">
-            @for (var y = 0; y < SnakeEngine.Height; y++)
-            {
-                for (var x = 0; x < SnakeEngine.Width; x++)
+        <!-- LEFT: Records -->
+        <aside class="records-panel">
+            <h3>Top 10</h3>
+
+            <table class="records-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Score</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_records.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="3" class="records-empty">No records yet</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @for (int i = 0; i < _records.Count; i++)
+                        {
+                            var r = _records[i];
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td>@r.Score</td>
+                                <td>@r.Date.ToString("dd.MM.yyyy")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </aside>
+
+        <!-- CENTER: Board -->
+        <main class="snake-board" role="application" aria-label="Snake board">
+            <div class="board-grid"
+                 @ref="_gridRef"
+                 tabindex="0"
+                 @onkeydown="OnKeyDown"
+                 @onkeydown:preventDefault
+                 @onkeydown:stopPropagation
+                 style="grid-template-columns: repeat(@SnakeEngine.Width, 1fr);
+                        grid-template-rows:    repeat(@SnakeEngine.Height, 1fr);">
+                @for (var y = 0; y < SnakeEngine.Height; y++)
                 {
-                    var cellClass = GetCellClasses(x, y, s);
-                    <div class="@cellClass" aria-hidden="true"></div>
+                    for (var x = 0; x < SnakeEngine.Width; x++)
+                    {
+                        var cellClass = GetCellClasses(x, y, s);
+                        <div class="@cellClass" aria-hidden="true"></div>
+                    }
                 }
-            }
-        </div>
+            </div>
+        </main>
+
+        <!-- RIGHT: HUD -->
+        <aside class="snake-hud">
+            <div class="hud-row">
+                <span><strong>Score:</strong> @s.Score</span>
+                <span><strong>High Score:</strong> @s.HighScore</span>
+                <span><strong>Speed:</strong> @Math.Round(s.TickInterval.TotalMilliseconds) ms</span>
+                <span><strong>Status:</strong> @GetStatusText(s)</span>
+                <span><strong>Wrap:</strong> @(s.WrapWalls ? "On" : "Off")</span>
+            </div>
+            <div class="hud-row controls">
+                <button class="btn" @onclick="TogglePause">@GetPauseButtonLabel(s)</button>
+                <button class="btn" @onclick="ResetGame">Reset</button>
+                <button class="btn" @onclick="ToggleWrap">@GetWrapButtonLabel(s)</button>
+            </div>
+        </aside>
+
     </div>
 </div>
