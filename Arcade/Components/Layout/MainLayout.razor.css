@@ -185,3 +185,11 @@
 
 .layout__login.layout__nav-link { 
 }
+.layout__user {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}

@@ -1,0 +1,95 @@
+﻿@page "/registrieren"
+@using Arcade.Data.Dtos
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpFactory
+@inject NavigationManager Nav
+
+<div class="auth">
+    <section class="auth__card">
+        <h1>Registrieren</h1>
+        <p>Neuen Account erstellen.</p>
+
+        <div class="auth__form">
+            <label>
+                Username
+                <input placeholder="Nickname" @bind="regUser" />
+            </label>
+
+            <label>
+                Email (optional)
+                <input placeholder="Email" @bind="regEmail" />
+            </label>
+
+            <label>
+                Passwort
+                <input type="password" placeholder="Passwort" @bind="regPass" />
+            </label>
+
+            <div class="auth__actions">
+                <button class="auth__submit" @onclick="DoRegister" disabled="@isBusy">
+                    Account erstellen
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(regError))
+            {
+                <p class="auth__error">@regError</p>
+            }
+
+            @if (regOk)
+            {
+                <p class="auth__ok">Registriert! Weiterleitung zur Anmeldung...</p>
+            }
+
+            <p class="auth__hint">
+                Schon einen Account?
+                <a href="/anmelden">Zur Anmeldung</a>
+            </p>
+        </div>
+    </section>
+</div>
+
+@code {
+    private string regUser = "";
+    private string regPass = "";
+    private string regEmail = "";
+    private string regError = "";
+    private bool regOk = false;
+    private bool isBusy = false;
+
+    private async Task DoRegister()
+    {
+        isBusy = true;
+        regError = "";
+        regOk = false;
+
+        try
+        {
+            var http = HttpFactory.CreateClient();
+
+            var dto = new RegisterDto
+            {
+                Username = regUser,
+                Email = string.IsNullOrWhiteSpace(regEmail) ? null : regEmail,
+                Password = regPass
+            };
+
+            var resp = await http.PostAsJsonAsync("/api/auth/register", dto);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var msg = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                regError = msg?.GetValueOrDefault("message") ?? "Registrierung fehlgeschlagen.";
+                return;
+            }
+
+            regOk = true;
+            await Task.Delay(1200);
+            Nav.NavigateTo("/anmelden");
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

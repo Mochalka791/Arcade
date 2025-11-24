@@ -1,28 +1,84 @@
 @page "/anmelden"
+@using Arcade.Data.Dtos
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IHttpClientFactory HttpFactory
+@inject NavigationManager Nav
 
-<PageTitle>Anmelden</PageTitle>
-
-<section class="auth">
-    <div class="auth__card">
+<div class="auth">
+    <section class="auth__card">
         <h1>Anmelden</h1>
-        <p>Willkommen zurück im Arcade-Hub. Melde dich an, um Fortschritte zu speichern und an Ranglisten teilzunehmen.</p>
+        <p>Log dich ein, um Scores zu speichern.</p>
 
-        <form class="auth__form" novalidate>
+        <div class="auth__form">
             <label>
-                <span>E-Mail-Adresse</span>
-                <input type="email" name="email" placeholder="name@example.com" autocomplete="email" required />
+                Username
+                <input placeholder="Nickname" @bind="loginUser" />
             </label>
 
             <label>
-                <span>Passwort</span>
-                <input type="password" name="password" placeholder="Passwort" autocomplete="current-password" required />
+                Passwort
+                <input type="password" placeholder="Passwort" @bind="loginPass" />
             </label>
 
             <div class="auth__actions">
-                <button type="submit" class="auth__submit">Anmelden</button>
+                <button class="auth__submit" @onclick="DoLogin" disabled="@isBusy">
+                    Login
+                </button>
             </div>
-        </form>
 
-        <p class="auth__hint">Noch kein Konto? Die Registrierung folgt in einem kommenden Update.</p>
-    </div>
-</section>
+            @if (!string.IsNullOrWhiteSpace(loginError))
+            {
+                <p class="auth__error">@loginError</p>
+            }
+
+            <p class="auth__hint">
+                Noch keinen Account?
+                <a href="/registrieren">Account erstellen</a>
+            </p>
+        </div>
+    </section>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    string loginUser = "", loginPass = "", loginError = "";
+    bool isBusy = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateTask!;
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+    }
+
+    async Task DoLogin()
+    {
+        isBusy = true;
+        loginError = "";
+
+        try
+        {
+            var http = HttpFactory.CreateClient();
+            var dto = new LoginDto { Username = loginUser, Password = loginPass };
+
+            var resp = await http.PostAsJsonAsync("/api/auth/login", dto);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var msg = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                loginError = msg?.GetValueOrDefault("message") ?? "Login fehlgeschlagen.";
+                return;
+            }
+
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

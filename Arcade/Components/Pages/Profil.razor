@@ -1,0 +1,26 @@
+﻿@page "/profil"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IHttpClientFactory HttpFactory
+@inject NavigationManager Nav
+
+<h1>Profil</h1>
+
+<p>Hi, <b>@UserName</b> 👋</p>
+
+<button class="auth__submit" @onclick="Logout">Abmelden</button>
+
+@code {
+    string UserName => (Context?.User?.Identity?.Name) ?? "Spieler";
+
+    [CascadingParameter]
+    private HttpContext? Context { get; set; }
+
+    async Task Logout()
+    {
+        var http = HttpFactory.CreateClient();
+        await http.PostAsync("/api/auth/logout", null);
+
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}

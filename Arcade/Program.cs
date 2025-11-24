@@ -6,18 +6,20 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Razor Components mit Server-Interaktivität
 builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// DB + Services
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=app.db"));
+var cs = builder.Configuration.GetConnectionString("Default")
+         ?? "Server=localhost;Port=3306;Database=arcadetestdb;User=root;Password=;SslMode=None;";
+
+var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
+
+builder.Services.AddDbContext<ArcadeDbContext>(options =>
+    options.UseMySql(cs, serverVersion));
 
 builder.Services.AddScoped<PasswordHasher>();
 
-// AuthN/AuthZ
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -25,10 +27,23 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/anmelden";
         options.LogoutPath = "/abmelden";
         options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(7);
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     });
+
 builder.Services.AddAuthorization();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
+
+// optional: DB auto-migrate
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ArcadeDbContext>();
+    db.Database.Migrate();
+}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -42,10 +57,10 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseAntiforgery();                // wichtig vor MapRazorComponents
+app.UseAntiforgery();
 app.MapStaticAssets();
 
-app.MapRazorComponents<App>()        // genau EINMAL
+app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
 
 app.MapAuthEndpoints();

@@ -2,27 +2,23 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Arcade.Data.Dtos;
 
-public record RegisterDto
+public sealed class RegisterDto
 {
-    [Required]
-    [StringLength(40, MinimumLength = 3)]
-    [RegularExpression("^[a-zA-Z0-9_.-]+$")]
-    public required string UserName { get; init; }
+    [Required, MinLength(3), MaxLength(40)]
+    public string Username { get; set; } = string.Empty;
 
-    [Required]
-    [MinLength(6)]
-    public required string Password { get; init; }
+    [EmailAddress, MaxLength(100)]
+    public string? Email { get; set; }
 
-    [Required]
-    [Compare(nameof(Password))]
-    public required string ConfirmPassword { get; init; }
+    [Required, MinLength(6), MaxLength(100)]
+    public string Password { get; set; } = string.Empty;
 }
 
-public record LoginDto
+public sealed class LoginDto
 {
     [Required]
-    public required string UserName { get; init; }
+    public string Username { get; set; } = string.Empty;
 
     [Required]
-    public required string Password { get; init; }
+    public string Password { get; set; } = string.Empty;
 }

@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Nav
 
 <div class="layout">
     <header class="layout__header">
@@ -11,7 +13,21 @@
             <NavLink class="layout__nav-link" href="/schach">Schach</NavLink>
         </nav>
 
-        <NavLink class="layout__login" href="/anmelden">Anmelden</NavLink>
+        <div class="layout__login">
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <button type="button"
+                            class="layout__user"
+                            @onclick="GoProfile">
+                        @auth.User.Identity?.Name
+                    </button>
+                </Authorized>
+
+                <NotAuthorized>
+                    <NavLink class="layout__login-link" href="/anmelden">Anmelden</NavLink>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
     </header>
 
     <main class="layout__main">
@@ -24,3 +40,8 @@
     <a href="." class="reload">Neu laden</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private void GoProfile()
+        => Nav.NavigateTo("/profil");
+}

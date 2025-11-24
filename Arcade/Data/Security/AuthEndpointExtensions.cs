@@ -4,7 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using Arcade.Data;
 using Arcade.Data.Dtos;
-using Arcade.Data.Models;
+using Arcade.Data.Entities; // ✅ wichtig
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -24,34 +24,34 @@ public static class AuthEndpointExtensions
         group.MapPost("/logout", LogoutAsync);
     }
 
-    private static async Task<IResult> RegisterAsync(RegisterDto dto, AppDbContext dbContext, PasswordHasher hasher, CancellationToken cancellationToken)
+    private static async Task<IResult> RegisterAsync(
+        RegisterDto dto,
+        ArcadeDbContext dbContext,
+        PasswordHasher hasher,
+        CancellationToken cancellationToken)
     {
         if (!MiniValidator.TryValidate(dto, out var errors))
-        {
             return Results.ValidationProblem(errors);
-        }
 
-        var normalizedName = dto.UserName.Trim();
+        var normalizedName = dto.Username.Trim();
         if (normalizedName.Length is < 3 or > 40)
-        {
             return Results.BadRequest(new { message = "Ungültiger Benutzername." });
-        }
 
         var lookupName = normalizedName.ToLowerInvariant();
-        var exists = await dbContext.Users.AnyAsync(u => u.UserName.ToLower() == lookupName, cancellationToken);
-        if (exists)
-        {
-            return Results.Conflict(new { message = "Benutzername bereits vergeben." });
-        }
+        var exists = await dbContext.Users
+            .AnyAsync(u => u.Username.ToLower() == lookupName, cancellationToken);
 
-        hasher.CreateHash(dto.Password, out var hash, out var salt);
+        if (exists)
+            return Results.Conflict(new { message = "Benutzername bereits vergeben." });
+
+        var hash = hasher.Hash(dto.Password);
 
         var user = new User
         {
-            UserName = normalizedName,
+            Username = normalizedName,
+            Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim(),
             PasswordHash = hash,
-            PasswordSalt = salt,
-            CreatedUtc = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow
         };
 
         dbContext.Users.Add(user);
@@ -60,22 +60,21 @@ public static class AuthEndpointExtensions
         return Results.Ok();
     }
 
-    private static async Task<IResult> LoginAsync(LoginDto dto, HttpContext httpContext, AppDbContext dbContext, PasswordHasher hasher, CancellationToken cancellationToken)
+    private static async Task<IResult> LoginAsync(
+        LoginDto dto,
+        HttpContext httpContext,
+        ArcadeDbContext dbContext,
+        PasswordHasher hasher,
+        CancellationToken cancellationToken)
     {
         if (!MiniValidator.TryValidate(dto, out var errors))
-        {
             return Results.ValidationProblem(errors);
-        }
 
-        var lookupName = dto.UserName.Trim().ToLowerInvariant();
-        var user = await dbContext.Users.SingleOrDefaultAsync(u => u.UserName.ToLower() == lookupName, cancellationToken);
-        if (user is null)
-        {
-            await Task.Delay(Random.Shared.Next(25, 75), cancellationToken);
-            return Results.BadRequest(new { message = "Ungültige Zugangsdaten." });
-        }
+        var lookupName = dto.Username.Trim().ToLowerInvariant();
+        var user = await dbContext.Users
+            .SingleOrDefaultAsync(u => u.Username.ToLower() == lookupName, cancellationToken);
 
-        if (!hasher.Verify(dto.Password, user.PasswordSalt, user.PasswordHash))
+        if (user is null || !hasher.Verify(dto.Password, user.PasswordHash))
         {
             await Task.Delay(Random.Shared.Next(25, 75), cancellationToken);
             return Results.BadRequest(new { message = "Ungültige Zugangsdaten." });
@@ -84,18 +83,21 @@ public static class AuthEndpointExtensions
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.UserName),
+            new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, "spieler")
         };
 
-        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(claimsIdentity);
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
 
-        await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, new AuthenticationProperties
-        {
-            IsPersistent = true,
-            ExpiresUtc = DateTimeOffset.UtcNow.Add(SignInDuration)
-        });
+        await httpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.Add(SignInDuration)
+            });
 
         return Results.Ok();
     }
@@ -124,6 +126,7 @@ file static class MiniValidator
         errors = validationResults
             .GroupBy(r => r.MemberNames.FirstOrDefault() ?? string.Empty)
             .ToDictionary(g => g.Key, g => g.Select(r => r.ErrorMessage ?? string.Empty).ToArray());
+
         return false;
     }
 }
