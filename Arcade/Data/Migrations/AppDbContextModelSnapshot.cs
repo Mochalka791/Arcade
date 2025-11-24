@@ -17,38 +17,41 @@ namespace Arcade.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.0");
+                .UseCollation("utf8mb4_0900_ai_ci")
+                .HasCharSet("utf8mb4")
+                .HasAnnotation("ProductVersion", "9.0.0")
+                .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
-            modelBuilder.Entity("Arcade.Data.Models.User", b =>
+            modelBuilder.Entity("Arcade.Data.Entities.User", b =>
             {
                 b.Property<int>("Id")
                     .ValueGeneratedOnAdd()
-                    .HasColumnType("INTEGER")
-                    .HasAnnotation("Sqlite:Autoincrement", true);
+                    .HasColumnType("int")
+                    .HasAnnotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn);
 
-                b.Property<DateTime>("CreatedUtc")
-                    .HasColumnType("TEXT")
-                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+                b.Property<DateTime>("CreatedAt")
+                    .HasColumnType("datetime(6)");
 
-                b.Property<byte[]>("PasswordHash")
+                b.Property<string>("Email")
+                    .HasMaxLength(100)
+                    .HasColumnType("varchar(100)");
+
+                b.Property<string>("PasswordHash")
                     .IsRequired()
-                    .HasColumnType("BLOB");
+                    .HasMaxLength(255)
+                    .HasColumnType("varchar(255)");
 
-                b.Property<byte[]>("PasswordSalt")
+                b.Property<string>("Username")
                     .IsRequired()
-                    .HasColumnType("BLOB");
-
-                b.Property<string>("UserName")
-                    .IsRequired()
-                    .HasMaxLength(40)
-                    .HasColumnType("TEXT");
+                    .HasMaxLength(50)
+                    .HasColumnType("varchar(50)");
 
                 b.HasKey("Id");
 
-                b.HasIndex("UserName")
+                b.HasIndex("Username")
                     .IsUnique();
 
-                b.ToTable("Users", (string)null);
+                b.ToTable("users", (string)null);
             });
 #pragma warning restore 612, 618
         }
