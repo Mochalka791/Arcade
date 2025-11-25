@@ -63,56 +63,101 @@
         var food = _engine.Food;
         var body = new HashSet<(int x, int y)>(_engine.Body);
 
-        var moves = new List<(int dx, int dy, Action move)>
-    {
+        var dirs = new (int dx, int dy, Action move)[]
+        {
         (0, -1, _engine.TurnUp),
         (0,  1, _engine.TurnDown),
         (-1, 0, _engine.TurnLeft),
         (1,  0, _engine.TurnRight),
-    };
+        };
+
+        int width = SnakeEngine.Width;
+        int height = SnakeEngine.Height;
+        int CountReachable((int x, int y) start)
+        {
+            var visited = new HashSet<(int x, int y)>();
+            var q = new Queue<(int x, int y)>();
+
+            if (body.Contains(start))
+                return 0;
+
+            visited.Add(start);
+            q.Enqueue(start);
+
+            int count = 0;
+
+            while (q.Count > 0)
+            {
+                var cur = q.Dequeue();
+                count++;
+
+                foreach (var (dx, dy, _) in dirs)
+                {
+                    var nx = cur.x + dx;
+                    var ny = cur.y + dy;
+
+                    if (_engine.WrapWalls)
+                    {
+                        nx = (nx + width) % width;
+                        ny = (ny + height) % height;
+                    }
+                    else
+                    {
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                            continue;
+                    }
+
+                    var pos = (nx, ny);
+
+                    if (visited.Contains(pos))
+                        continue;
+
+                    if (body.Contains(pos))
+                        continue;
+
+                    visited.Add(pos);
+                    q.Enqueue(pos);
+                }
+            }
+
+            return count;
+        }
 
         (Action move, int score)? best = null;
 
-        foreach (var (dx, dy, move) in moves)
+        foreach (var (dx, dy, move) in dirs)
         {
             var nx = head.x + dx;
             var ny = head.y + dy;
 
             if (!_engine.WrapWalls)
             {
-                if (nx < 0 || nx >= SnakeEngine.Width ||
-                    ny < 0 || ny >= SnakeEngine.Height)
-                {
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height)
                     continue;
-                }
             }
             else
             {
-                nx = (nx + SnakeEngine.Width) % SnakeEngine.Width;
-                ny = (ny + SnakeEngine.Height) % SnakeEngine.Height;
+                nx = (nx + width) % width;
+                ny = (ny + height) % height;
             }
 
-            if (body.Contains((nx, ny)))
+            var nextPos = (nx, ny);
+
+            if (body.Contains(nextPos))
                 continue;
 
-            var dist = Math.Abs(food.x - nx) + Math.Abs(food.y - ny);
-            var score = -dist;
+            int space = CountReachable(nextPos);
+            int dist = Math.Abs(food.x - nx) + Math.Abs(food.y - ny);
+            int score = space * 100 - dist;
 
             if (best is null || score > best.Value.score)
             {
                 best = (move, score);
             }
         }
-        if (best != null)
-        {
-            best.Value.move();
-        }
-        else
-        {
-            _engine.TurnUp();
-        }
-
+        best?.move();
     }
+
 
     private async Task StartLoopAsync()
     {
