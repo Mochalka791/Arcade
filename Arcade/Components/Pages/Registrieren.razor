@@ -5,30 +5,46 @@
 @inject IHttpClientFactory HttpFactory
 @inject NavigationManager Nav
 
+<!-- Vollbild-Hintergrund -->
+<div class="auth-bg"></div>
+
 <div class="auth">
     <section class="auth__card">
-        <h1>Registrieren</h1>
-        <p>Neuen Account erstellen.</p>
+        <header class="auth__header">
+            <h1 class="auth__title">Registrieren</h1>
+            <p class="auth__subtitle">Erstelle deinen neuen Arcade-Account.</p>
+        </header>
 
         <div class="auth__form">
-            <label>
-                Username
-                <input placeholder="Nickname" @bind="regUser" />
+            <label class="auth__field">
+                <span class="auth__label">Username</span>
+                <input class="auth__input"
+                       type="text"
+                       placeholder="Nickname"
+                       @bind="regUser" />
             </label>
 
-            <label>
-                Email (optional)
-                <input placeholder="Email" @bind="regEmail" />
+            <label class="auth__field">
+                <span class="auth__label">E-Mail (optional)</span>
+                <input class="auth__input"
+                       type="email"
+                       placeholder="E-Mail-Adresse"
+                       @bind="regEmail" />
             </label>
 
-            <label>
-                Passwort
-                <input type="password" placeholder="Passwort" @bind="regPass" />
+            <label class="auth__field">
+                <span class="auth__label">Passwort</span>
+                <input class="auth__input"
+                       type="password"
+                       placeholder="Passwort"
+                       @bind="regPass" />
             </label>
 
             <div class="auth__actions">
-                <button class="auth__submit" @onclick="DoRegister" disabled="@isBusy">
-                    Account erstellen
+                <button class="auth__submit @(isBusy ? "auth__submit--busy" : null)"
+                        @onclick="DoRegister"
+                        disabled="@isBusy">
+                    @(isBusy ? "Wird erstellt..." : "Account erstellen")
                 </button>
             </div>
 
@@ -39,7 +55,7 @@
 
             @if (regOk)
             {
-                <p class="auth__ok">Registriert! Weiterleitung zur Anmeldung...</p>
+                <p class="auth__ok">Registriert! Du wirst zur Anmeldung weitergeleitet...</p>
             }
 
             <p class="auth__hint">
@@ -66,10 +82,8 @@
 
         try
         {
-            regError = "Klick angekommen...";
-
             var http = HttpFactory.CreateClient();
-            http.BaseAddress = new Uri(Nav.BaseUri); 
+            http.BaseAddress = new Uri(Nav.BaseUri);
 
             var dto = new RegisterDto
             {
@@ -79,31 +93,26 @@
             };
 
             var resp = await http.PostAsJsonAsync("api/auth/register", dto);
-
             var raw = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
             {
-                regError = $"HTTP {(int)resp.StatusCode} {resp.StatusCode}: {raw}";
+                regError = $"Fehler: {(int)resp.StatusCode} {resp.StatusCode}";
                 return;
             }
 
             regOk = true;
-            regError = $"OK: {raw}";
             await Task.Delay(1200);
             Nav.NavigateTo("/anmelden");
         }
         catch (Exception ex)
         {
-            regError = $"EXCEPTION: {ex.Message}";
+            regError = $"Fehler bei der Registrierung: {ex.Message}";
         }
         finally
         {
             isBusy = false;
             StateHasChanged();
         }
-    }
-
-
     }
 }
