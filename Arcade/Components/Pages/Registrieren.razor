@@ -1,4 +1,5 @@
 ﻿@page "/registrieren"
+@rendermode InteractiveServer
 @using Arcade.Data.Dtos
 @using System.Net.Http.Json
 @inject IHttpClientFactory HttpFactory
@@ -65,7 +66,10 @@
 
         try
         {
+            regError = "Klick angekommen...";
+
             var http = HttpFactory.CreateClient();
+            http.BaseAddress = new Uri(Nav.BaseUri); 
 
             var dto = new RegisterDto
             {
@@ -74,22 +78,32 @@
                 Password = regPass
             };
 
-            var resp = await http.PostAsJsonAsync("/api/auth/register", dto);
+            var resp = await http.PostAsJsonAsync("api/auth/register", dto);
+
+            var raw = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
             {
-                var msg = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-                regError = msg?.GetValueOrDefault("message") ?? "Registrierung fehlgeschlagen.";
+                regError = $"HTTP {(int)resp.StatusCode} {resp.StatusCode}: {raw}";
                 return;
             }
 
             regOk = true;
+            regError = $"OK: {raw}";
             await Task.Delay(1200);
             Nav.NavigateTo("/anmelden");
+        }
+        catch (Exception ex)
+        {
+            regError = $"EXCEPTION: {ex.Message}";
         }
         finally
         {
             isBusy = false;
+            StateHasChanged();
         }
+    }
+
+
     }
 }

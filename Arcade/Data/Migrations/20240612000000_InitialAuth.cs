@@ -10,8 +10,6 @@ namespace Arcade.Data.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Fix: align the initial schema with the current User entity
-            // (older migration used different column names/types, which broke registration at runtime).
             migrationBuilder.AlterDatabase()
                 .Annotation("MySql:CharSet", "utf8mb4");
 

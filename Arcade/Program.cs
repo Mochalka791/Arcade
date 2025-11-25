@@ -10,10 +10,10 @@ builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var cs = builder.Configuration.GetConnectionString("Default")
+var cs = builder.Configuration.GetConnectionString("ArcadeDb")
          ?? "Server=localhost;Port=3306;Database=arcadetestdb;User=root;Password=;SslMode=None;";
 
-var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
+var serverVersion = new MariaDbServerVersion(new Version(10, 4, 32));
 
 builder.Services.AddDbContext<ArcadeDbContext>(options =>
     options.UseMySql(cs, serverVersion));
@@ -34,16 +34,25 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// optional: DB auto-migrate
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArcadeDbContext>();
-    db.Database.Migrate();
+    try
+    {
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "DB Migration failed. App starts without DB.");
+    }
 }
+
 
 if (!app.Environment.IsDevelopment())
 {
