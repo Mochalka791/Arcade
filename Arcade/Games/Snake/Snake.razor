@@ -1,30 +1,43 @@
 @page "/snake"
 @layout Arcade.Components.Layout.MainLayout
 @rendermode Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer
+
 @using System.Threading
 @using Arcade.Games.Snake
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Arcade.Data
+@using Arcade.Data.Entities
+@using System.Security.Claims
+
+@attribute [Authorize]
+
+@inject ArcadeDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
 
 @implements IAsyncDisposable
 
 @code {
+    private sealed record SnakeRecord(string UserName, int Score);
+
     private readonly SnakeEngine _engine = new();
     private readonly object _lockObj = new();
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private int _tickGuard;
-    // record 
+
     private List<SnakeRecord> _records = new();
     private bool _recordSavedThisGame = false;
 
-
-    // Fokus fürs Grid
     private ElementReference _gridRef;
     private bool _focusedOnce;
 
     protected override async Task OnInitializedAsync()
     {
         lock (_lockObj) _engine.Reset();
+        await LoadTopAsync();      
         await StartLoopAsync();
     }
 
@@ -48,9 +61,18 @@
     {
         if (_cts is null) return;
         _cts.Cancel();
-        try { if (_loop is not null) await _loop; }
+        try
+        {
+            if (_loop is not null)
+                await _loop;
+        }
         catch (OperationCanceledException) { }
-        finally { _cts.Dispose(); _cts = null; _loop = null; }
+        finally
+        {
+            _cts.Dispose();
+            _cts = null;
+            _loop = null;
+        }
     }
 
     private async Task RunLoopAsync(CancellationToken token)
@@ -76,7 +98,7 @@
                                 if (!_engine.IsPaused && !_engine.IsGameOver)
                                 {
                                     _engine.Tick();
-                                    interval = _engine.TickInterval; // Speed-Änderung übernehmen
+                                    interval = _engine.TickInterval;
                                     shouldRender = true;
                                 }
                             }
@@ -86,9 +108,18 @@
                             Interlocked.Exchange(ref _tickGuard, 0);
                         }
                     }
-                    if (_engine.IsGameOver && interval != TimeSpan.Zero)
+                    if (_engine.IsGameOver && !_recordSavedThisGame)
                     {
-                        SaveRecord(_engine.Score);
+                        _recordSavedThisGame = true;
+
+                        int finalScore;
+                        lock (_lockObj)
+                        {
+                            finalScore = _engine.Score;
+                        }
+
+                        await SaveStatsAsync(finalScore, token);
+                        await LoadTopAsync(token);
                     }
 
                     if (shouldRender)
@@ -102,23 +133,87 @@
         catch (OperationCanceledException) { }
     }
 
-    private void SaveRecord(int score)
+    private async Task<int?> ResolveUserIdAsync(CancellationToken token = default)
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var principal = auth.User;
+
+        if (principal.Identity is not { IsAuthenticated: true })
+            return null;
+
+        var idClaim =
+            principal.FindFirst(ClaimTypes.NameIdentifier) ??
+            principal.FindFirst("userId") ??
+            principal.FindFirst("sub") ??
+            principal.FindFirst("id");
+
+        if (idClaim != null && int.TryParse(idClaim.Value, out var parsedId))
+            return parsedId;
+
+        var username = principal.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
+            return null;
+
+        var dbUser = await Db.Users
+            .FirstOrDefaultAsync(u => u.Username == username, cancellationToken: token);
+
+        return dbUser?.Id;
+    }
+
+    private async Task SaveStatsAsync(int score, CancellationToken token)
     {
         if (score <= 0) return;
 
-        _records.Add(new SnakeRecord
-        {
-            Score = score,
-            Date = DateTime.Now
-        });
+        var userId = await ResolveUserIdAsync(token);
+        if (userId is null) return;
 
-        _records = _records
-            .OrderByDescending(r => r.Score)
-            .Take(10)
-            .ToList();
+        var stats = await Db.SnakeStats
+            .FirstOrDefaultAsync(s => s.UserId == userId.Value, token);
+
+        if (stats == null)
+        {
+            stats = new SnakeStats
+            {
+                UserId = userId.Value,
+                HighScore = score,
+                GamesPlayed = 0,
+                AverageScore = 0m
+            };
+            Db.SnakeStats.Add(stats);
+        }
+
+        stats.GamesPlayed++;
+
+        if (score > stats.HighScore)
+        {
+            stats.HighScore = score;
+        }
+
+        stats.AverageScore =
+            ((stats.AverageScore * (stats.GamesPlayed - 1)) + score)
+            / stats.GamesPlayed;
+
+        await Db.SaveChangesAsync(token);
     }
 
- 
+    private async Task LoadTopAsync(CancellationToken token = default)
+    {
+        try
+        {
+            _records = await Db.SnakeStats
+                .Include(s => s.User)
+                .OrderByDescending(s => s.HighScore)
+                .Take(10)
+                .Select(s => new SnakeRecord(s.User.Username, s.HighScore))
+                .ToListAsync(token);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Fehler beim Laden der Snake-Top-List: {ex.Message}");
+            _records = new List<SnakeRecord>();
+        }
+    }
+
     private sealed record SnakeSnapshot(
         HashSet<(int x, int y)> Body,
         (int x, int y) Head,
@@ -140,7 +235,7 @@
                 return new SnakeSnapshot(
                     new HashSet<(int x, int y)>(_engine.Body),
                     _engine.Head,
-                    _engine.Food,   
+                    _engine.Food,
                     _engine.Score,
                     _engine.HighScore,
                     _engine.IsPaused,
@@ -153,16 +248,31 @@
         }
     }
 
-    private string GetStatusText(SnakeSnapshot s) => s.IsGameOver ? "Game Over" : s.IsPaused ? "Paused" : "Running";
-    private string GetPauseButtonLabel(SnakeSnapshot s) => s.IsGameOver ? "Restart" : s.IsPaused ? "Resume" : "Pause";
-    private string GetWrapButtonLabel(SnakeSnapshot s) => s.WrapWalls ? "Disable Wrap" : "Enable Wrap";
+    private string GetStatusText(SnakeSnapshot s)
+        => s.IsGameOver ? "Game Over" : s.IsPaused ? "Paused" : "Running";
+
+    private string GetPauseButtonLabel(SnakeSnapshot s)
+        => s.IsGameOver ? "Restart" : s.IsPaused ? "Resume" : "Pause";
+
+    private string GetWrapButtonLabel(SnakeSnapshot s)
+        => s.WrapWalls ? "Disable Wrap" : "Enable Wrap";
 
     private string GetCellClasses(int x, int y, SnakeSnapshot s)
     {
         var cls = new List<string> { "cell" };
-        if (s.Head.x == x && s.Head.y == y) { cls.Add("head"); if (s.AteFoodLastTick) cls.Add("ate"); }
-        else if (s.Body.Contains((x, y))) cls.Add("snake");
-        if (s.Food.x == x && s.Food.y == y) cls.Add("food");
+        if (s.Head.x == x && s.Head.y == y)
+        {
+            cls.Add("head");
+            if (s.AteFoodLastTick) cls.Add("ate");
+        }
+        else if (s.Body.Contains((x, y)))
+        {
+            cls.Add("snake");
+        }
+
+        if (s.Food.x == x && s.Food.y == y)
+            cls.Add("food");
+
         return string.Join(' ', cls);
     }
 
@@ -241,7 +351,6 @@
         _recordSavedThisGame = false;
         StateHasChanged();
         return Task.CompletedTask;
-
     }
 
     public async ValueTask DisposeAsync() => await StopLoopAsync();
@@ -254,7 +363,6 @@
 <div class="snake-page">
     <div class="snake-layout">
 
-        <!-- LEFT: Records -->
         <aside class="records-panel">
             <h3>Top 10</h3>
 
@@ -262,15 +370,15 @@
                 <thead>
                     <tr>
                         <th>#</th>
+                        <th>Spieler</th>
                         <th>Score</th>
-                        <th>Date</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (_records.Count == 0)
                     {
                         <tr>
-                            <td colspan="3" class="records-empty">No records yet</td>
+                            <td colspan="3" class="records-empty">Noch keine Einträge</td>
                         </tr>
                     }
                     else
@@ -280,8 +388,8 @@
                             var r = _records[i];
                             <tr>
                                 <td>@(i + 1)</td>
+                                <td>@r.UserName</td>
                                 <td>@r.Score</td>
-                                <td>@r.Date.ToString("dd.MM.yyyy")</td>
                             </tr>
                         }
                     }
@@ -289,7 +397,6 @@
             </table>
         </aside>
 
-        <!-- CENTER: Board -->
         <main class="snake-board" role="application" aria-label="Snake board">
             <div class="board-grid"
                  @ref="_gridRef"
@@ -310,7 +417,6 @@
             </div>
         </main>
 
-        <!-- RIGHT: HUD -->
         <aside class="snake-hud">
             <div class="hud-row">
                 <span><strong>Score:</strong> @s.Score</span>

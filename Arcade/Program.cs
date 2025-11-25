@@ -1,4 +1,4 @@
-using Arcade.Components;
+ï»¿using Arcade.Components;
 using Arcade.Data;
 using Arcade.Data.Security;
 using Microsoft.AspNetCore.Authentication;
@@ -6,11 +6,12 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// DB-Verbindung!!!!!!!!!
+// DB-Verbindung
 var cs = builder.Configuration.GetConnectionString("ArcadeDb")
          ?? "Server=localhost;Port=3306;Database=arcadetestdb;User=root;Password=;SslMode=None;";
 
@@ -19,8 +20,10 @@ var serverVersion = new MariaDbServerVersion(new Version(10, 4, 32));
 builder.Services.AddDbContext<ArcadeDbContext>(options =>
     options.UseMySql(cs, serverVersion));
 
-// PasswordHasher (später)
+// PasswordHasher
 builder.Services.AddScoped<PasswordHasher>();
+
+builder.Services.AddHttpContextAccessor();
 
 // Cookie Auth
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -43,6 +46,7 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
+// DB-Migration
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArcadeDbContext>();
@@ -75,10 +79,10 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
 
-// API Endpoints laden 
+// API Endpoints laden (Login/Registrierung etc.)
 app.MapAuthEndpoints();
 
-//LOGOUT-ROUTE
+// LOGOUT-ROUTE
 app.MapGet("/abmelden", async (HttpContext ctx) =>
 {
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

@@ -2,9 +2,14 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @layout Arcade.Components.Layout.MainLayout
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
-@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+@using Arcade.Data
+@using Arcade.Data.Entities
 
+@inject ArcadeDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
 <div class="profil">
     <div class="profil__header">
         <p class="profil__greeting">Hi <span class="profil__username">@UserName</span> 👋</p>
@@ -20,11 +25,11 @@
                 else
                 {
                     <div class="profil__avatar-placeholder">
-                        @UserName.Substring(0, 1).ToUpper()
+                        @(UserName.Length > 0 ? UserName[..1].ToUpper() : "?")
                     </div>
                 }
                 <label class="profil__avatar-upload" title="Avatar ändern">
-                    <input type="file" class="profil__avatar-input" accept="image/*" @* @onchange="OnAvatarChange *@" />
+                    <input type="file" class="profil__avatar-input" accept="image/*" />
                 </label>
             </div>
         </div>
@@ -36,11 +41,11 @@
             </div>
             <div class="profil__info-item">
                 <span class="profil__info-label">Registriert seit</span>
-                <span class="profil__info-value">@RegistrationDate.ToString("dd.MM.yyyy")</span>
+                <span class="profil__info-value">@RegistrationDateDisplay</span>
             </div>
             <div class="profil__info-item">
                 <span class="profil__info-label">Tage dabei</span>
-                <span class="profil__info-value">@((DateTime.Now - RegistrationDate).Days) Tage</span>
+                <span class="profil__info-value">@DaysSinceRegistration Tage</span>
             </div>
         </div>
     </div>
@@ -55,15 +60,21 @@
                 <div class="profil__score-stats">
                     <div class="profil__score-item">
                         <span class="profil__score-label">Highscore</span>
-                        <span class="profil__score-value profil__score-value--highlight">@SnakeHighScore</span>
+                        <span class="profil__score-value profil__score-value--highlight">
+                            @(_snakeHighScore?.ToString() ?? "0")
+                        </span>
                     </div>
                     <div class="profil__score-item">
                         <span class="profil__score-label">Spiele gespielt</span>
-                        <span class="profil__score-value">@SnakeGamesPlayed</span>
+                        <span class="profil__score-value">
+                            @(_snakeGamesPlayed?.ToString() ?? "0")
+                        </span>
                     </div>
                     <div class="profil__score-item">
                         <span class="profil__score-label">Ø Punktzahl</span>
-                        <span class="profil__score-value">@SnakeAvgScore</span>
+                        <span class="profil__score-value">
+                            @(_snakeAverageScore.HasValue? _snakeAverageScore.Value.ToString("0.0") : "0")
+                        </span>
                     </div>
                 </div>
             </div>
@@ -74,20 +85,25 @@
                 <div class="profil__score-stats">
                     <div class="profil__score-item">
                         <span class="profil__score-label">Highscore</span>
-                        <span class="profil__score-value profil__score-value--highlight">@TetrisHighScore</span>
+                        <span class="profil__score-value profil__score-value--highlight">
+                            @(_tetrisHighScore?.ToString() ?? "0")
+                        </span>
                     </div>
                     <div class="profil__score-item">
                         <span class="profil__score-label">Spiele gespielt</span>
-                        <span class="profil__score-value">@TetrisGamesPlayed</span>
+                        <span class="profil__score-value">
+                            @(_tetrisGamesPlayed?.ToString() ?? "0")
+                        </span>
                     </div>
                     <div class="profil__score-item">
                         <span class="profil__score-label">Max. Level</span>
-                        <span class="profil__score-value">@TetrisMaxLevel</span>
+                        <span class="profil__score-value">
+                            @(_tetrisMaxLevel?.ToString() ?? "0")
+                        </span>
                     </div>
                 </div>
             </div>
 
-            <!-- Weitere Spiele (Platzhalter) -->
             <div class="profil__score-card">
                 <div class="profil__score-game">🎮 Spiel 3</div>
                 <div class="profil__empty">
@@ -125,69 +141,124 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthStateTask { get; set; }
+    private string UserName = "Spieler";
+    private string? AvatarUrl;
+    private DateTime? RegistrationDate;
+    private string RegistrationDateDisplay = "-";
+    private int DaysSinceRegistration = 0;
 
-    string UserName = "Spieler";
-    string? AvatarUrl = null;
-    DateTime RegistrationDate = DateTime.Now.AddDays(-42); // Beispiel: vor 42 Tagen registriert
+    private int? _snakeHighScore;
+    private int? _snakeGamesPlayed;
+    private decimal? _snakeAverageScore;
 
-    // Snake Statistiken (später aus Database)
-    int SnakeHighScore = 0;
-    int SnakeGamesPlayed = 0;
-    int SnakeAvgScore = 0;
-
-    // Tetris Statistiken (später aus Database)
-    int TetrisHighScore = 0;
-    int TetrisGamesPlayed = 0;
-    int TetrisMaxLevel = 0;
+    private int? _tetrisHighScore;
+    private int? _tetrisGamesPlayed;
+    private int? _tetrisMaxLevel;
 
     protected override async Task OnInitializedAsync()
     {
-        var auth = await AuthStateTask!;
-        if (auth.User.Identity?.IsAuthenticated == true)
-        {
-            UserName = auth.User.Identity!.Name!;
-
-            // TODO: Lade Statistiken aus der Database
-            // await LoadUserStats();
-
-            // Temporäre Beispieldaten
-            SnakeHighScore = 1250;
-            SnakeGamesPlayed = 47;
-            SnakeAvgScore = 856;
-
-            TetrisHighScore = 8430;
-            TetrisGamesPlayed = 23;
-            TetrisMaxLevel = 12;
-        }
-        else
-        {
-            Nav.NavigateTo("/anmelden", true);
-        }
+        await LoadUserInfoAsync();
+        await LoadSnakeStatsAsync();
+        // await LoadTetrisStatsAsync();
     }
 
-    private async Task OnAvatarChange(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    // User laden (Name, Avatar, Registrierungsdatum)
+    private async Task LoadUserInfoAsync()
     {
-        var file = e.File;
-        if (file != null)
-        {
-            // TODO: Upload Avatar zu Server
-            // var buffer = new byte[file.Size];
-            // await file.OpenReadStream().ReadAsync(buffer);
-            // AvatarUrl = await UploadAvatar(buffer);
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
 
-            // Temporär: Zeige lokales Bild
-            var reader = new System.IO.StreamReader(file.OpenReadStream());
-            // In Produktion: Bild hochladen und URL speichern
+        if (user.Identity is not { IsAuthenticated: true })
+            return;
+
+        UserName = user.Identity!.Name ?? "Spieler";
+
+        var dbUser = await Db.Users
+            .FirstOrDefaultAsync(u => u.Username == UserName);
+
+        if (dbUser == null)
+            return;
+
+        // AvatarUrl = dbUser.AvatarUrl;
+
+        if (dbUser.CreatedAt != default)
+        {
+            RegistrationDate = dbUser.CreatedAt;
+            RegistrationDateDisplay = RegistrationDate?.ToString("dd.MM.yyyy") ?? "-";
+            DaysSinceRegistration = (int)(DateTime.Now - RegistrationDate!.Value).TotalDays;
         }
     }
 
-    // TODO: Methode zum Laden der Statistiken aus der Database
-    // private async Task LoadUserStats()
+    // Snake Stats laden
+    private async Task LoadSnakeStatsAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (user.Identity is not { IsAuthenticated: true })
+            return;
+
+        int? userId = await ResolveUserIdAsync(user);
+
+        if (userId is null)
+            return;
+
+        var stats = await Db.SnakeStats
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+
+        if (stats != null)
+        {
+            _snakeHighScore = stats.HighScore;
+            _snakeGamesPlayed = stats.GamesPlayed;
+            _snakeAverageScore = stats.AverageScore;
+        }
+    }
+
+    // // Tetris Stats laden
+    // private async Task LoadTetrisStatsAsync()
     // {
-    //     // var stats = await Database.GetUserStats(UserName);
-    //     // SnakeHighScore = stats.SnakeHighScore;
-    //     // ...
+    //     var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+    //     var user = auth.User;
+
+    //     if (user.Identity is not { IsAuthenticated: true })
+    //         return;
+
+    //     int? userId = await ResolveUserIdAsync(user);
+
+    //     if (userId is null)
+    //         return;
+
+    //     var stats = await Db.TetrisStats
+    //         .FirstOrDefaultAsync(t => t.UserId == userId);
+
+    //     if (stats != null)
+    //     {
+    //         _tetrisHighScore = stats.HighScore;
+    //         _tetrisGamesPlayed = stats.GamesPlayed;
+    //         _tetrisMaxLevel = stats.MaxLevel;
+    //     }
     // }
+
+    // UserId bestimmen (Claim → Fallback Username)
+    private async Task<int?> ResolveUserIdAsync(ClaimsPrincipal principal)
+    {
+        var idClaim =
+            principal.FindFirst(ClaimTypes.NameIdentifier) ??
+            principal.FindFirst("userId") ??
+            principal.FindFirst("sub") ??
+            principal.FindFirst("id");
+
+        if (idClaim != null && int.TryParse(idClaim.Value, out var parsedId))
+            return parsedId;
+
+        var username = principal.Identity?.Name;
+
+        if (string.IsNullOrWhiteSpace(username))
+            return null;
+
+        var dbUser = await Db.Users
+            .FirstOrDefaultAsync(u => u.Username == username);
+
+        return dbUser?.Id;
+    }
 }
