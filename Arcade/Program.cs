@@ -1,6 +1,7 @@
 using Arcade.Components;
 using Arcade.Data;
 using Arcade.Data.Security;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,9 +29,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LogoutPath = "/abmelden";
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromDays(7);
+
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.None;
     });
 
 builder.Services.AddAuthorization();
@@ -38,7 +40,6 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
-
 
 using (var scope = app.Services.CreateScope())
 {
@@ -52,7 +53,6 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogError(ex, "DB Migration failed. App starts without DB.");
     }
 }
-
 
 if (!app.Environment.IsDevelopment())
 {

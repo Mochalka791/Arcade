@@ -1,26 +1,36 @@
 ﻿@page "/profil"
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
-@inject IHttpClientFactory HttpFactory
+@layout Arcade.Components.Layout.MainLayout
+
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IJSRuntime JS
 @inject NavigationManager Nav
 
-<h1>Profil</h1>
+<h3>Dein Profil</h3>
 
-<p>Hi, <b>@UserName</b> 👋</p>
+<p>Hi <b>@UserName</b> 👋</p>
 
-<button class="auth__submit" @onclick="Logout">Abmelden</button>
+<button class="auth__submit" @onclick="Logout">Logout</button>
 
 @code {
-    string UserName => (Context?.User?.Identity?.Name) ?? "Spieler";
-
     [CascadingParameter]
-    private HttpContext? Context { get; set; }
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    string UserName = "Spieler";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateTask!;
+        if (auth.User.Identity?.IsAuthenticated == true)
+            UserName = auth.User.Identity!.Name!;
+        else
+            Nav.NavigateTo("/anmelden", true);
+    }
 
     async Task Logout()
     {
-        var http = HttpFactory.CreateClient();
-        await http.PostAsync("/api/auth/logout", null);
-
-        Nav.NavigateTo("/", forceLoad: true);
+        await JS.InvokeVoidAsync("arcadeAuth.logout");
+        Nav.NavigateTo("/", true);
     }
 }

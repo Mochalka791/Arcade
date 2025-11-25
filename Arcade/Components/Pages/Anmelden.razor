@@ -2,7 +2,7 @@
 @rendermode InteractiveServer
 @using Arcade.Data.Dtos
 @using Microsoft.AspNetCore.Components.Authorization
-@inject IHttpClientFactory HttpFactory
+@inject IJSRuntime JS
 @inject NavigationManager Nav
 
 <div class="auth">
@@ -56,6 +56,13 @@
         }
     }
 
+    private sealed class LoginResultJs
+    {
+        public bool ok { get; set; }
+        public int status { get; set; }
+        public string? message { get; set; }
+    }
+
     async Task DoLogin()
     {
         isBusy = true;
@@ -63,16 +70,14 @@
 
         try
         {
-            var http = HttpFactory.CreateClient();
-            http.BaseAddress = new Uri(Nav.BaseUri);
-
             var dto = new LoginDto { Username = loginUser, Password = loginPass };
-            var resp = await http.PostAsJsonAsync("api/auth/login", dto);
 
-            if (!resp.IsSuccessStatusCode)
+            var result = await JS.InvokeAsync<LoginResultJs>(
+                "arcadeAuth.login", dto);
+
+            if (!result.ok)
             {
-                var msg = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-                loginError = msg?.GetValueOrDefault("message") ?? "Login fehlgeschlagen.";
+                loginError = result.message ?? "Login fehlgeschlagen.";
                 return;
             }
 

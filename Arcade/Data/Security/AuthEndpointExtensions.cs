@@ -61,11 +61,11 @@ public static class AuthEndpointExtensions
     }
 
     private static async Task<IResult> LoginAsync(
-        LoginDto dto,
-        HttpContext httpContext,
-        ArcadeDbContext dbContext,
-        PasswordHasher hasher,
-        CancellationToken cancellationToken)
+     LoginDto dto,
+     HttpContext httpContext,
+     ArcadeDbContext dbContext,
+     PasswordHasher hasher,
+     CancellationToken cancellationToken)
     {
         if (!MiniValidator.TryValidate(dto, out var errors))
             return Results.ValidationProblem(errors);
@@ -81,26 +81,23 @@ public static class AuthEndpointExtensions
         }
 
         var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, "spieler")
-        };
+    {
+        new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new(ClaimTypes.Name, user.Username),
+        new(ClaimTypes.Role, "spieler")
+    };
 
         var principal = new ClaimsPrincipal(
             new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
 
-        await httpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            principal,
-            new AuthenticationProperties
-            {
-                IsPersistent = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.Add(SignInDuration)
-            });
-
-        return Results.Ok();
+        var props = new AuthenticationProperties
+        {
+            IsPersistent = true,
+            ExpiresUtc = DateTimeOffset.UtcNow.Add(SignInDuration)
+        };
+        return Results.SignIn(principal, props, CookieAuthenticationDefaults.AuthenticationScheme);
     }
+
 
     private static async Task<IResult> LogoutAsync(HttpContext httpContext)
     {
