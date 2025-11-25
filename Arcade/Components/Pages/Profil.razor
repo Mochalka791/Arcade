@@ -4,14 +4,13 @@
 @layout Arcade.Components.Layout.MainLayout
 
 @using Microsoft.AspNetCore.Components.Authorization
-@inject IJSRuntime JS
 @inject NavigationManager Nav
 
 <h3>Dein Profil</h3>
 
 <p>Hi <b>@UserName</b> 👋</p>
 
-<button class="auth__submit" @onclick="Logout">Logout</button>
+<a href="/abmelden" class="auth__submit">Logout</a>
 
 @code {
     [CascadingParameter]
@@ -26,11 +25,5 @@
             UserName = auth.User.Identity!.Name!;
         else
             Nav.NavigateTo("/anmelden", true);
-    }
-
-    async Task Logout()
-    {
-        await JS.InvokeVoidAsync("arcadeAuth.logout");
-        Nav.NavigateTo("/", true);
     }
 }

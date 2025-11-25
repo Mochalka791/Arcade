@@ -6,11 +6,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
 builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// DB-Verbindung!!!!!!!!!
 var cs = builder.Configuration.GetConnectionString("ArcadeDb")
          ?? "Server=localhost;Port=3306;Database=arcadetestdb;User=root;Password=;SslMode=None;";
 
@@ -19,8 +19,10 @@ var serverVersion = new MariaDbServerVersion(new Version(10, 4, 32));
 builder.Services.AddDbContext<ArcadeDbContext>(options =>
     options.UseMySql(cs, serverVersion));
 
+// PasswordHasher (später)
 builder.Services.AddScoped<PasswordHasher>();
 
+// Cookie Auth
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -69,9 +71,18 @@ app.UseAuthorization();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
+// Razor Components aktivieren
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
 
+// API Endpoints laden 
 app.MapAuthEndpoints();
+
+//LOGOUT-ROUTE
+app.MapGet("/abmelden", async (HttpContext ctx) =>
+{
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/");
+});
 
 app.Run();
