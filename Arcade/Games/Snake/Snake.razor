@@ -21,6 +21,7 @@
 
 @code {
     private sealed record SnakeRecord(string UserName, int Score);
+    private bool _autoMode = false;
 
     private readonly SnakeEngine _engine = new();
     private readonly object _lockObj = new();
@@ -48,6 +49,69 @@
             _focusedOnce = true;
             try { await _gridRef.FocusAsync(); } catch { }
         }
+    }
+    private Task ToggleAuto()
+    {
+        _autoMode = !_autoMode;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void PerformAutoMove()
+    {
+        var head = _engine.Head;
+        var food = _engine.Food;
+        var body = new HashSet<(int x, int y)>(_engine.Body);
+
+        var moves = new List<(int dx, int dy, Action move)>
+    {
+        (0, -1, _engine.TurnUp),
+        (0,  1, _engine.TurnDown),
+        (-1, 0, _engine.TurnLeft),
+        (1,  0, _engine.TurnRight),
+    };
+
+        (Action move, int score)? best = null;
+
+        foreach (var (dx, dy, move) in moves)
+        {
+            var nx = head.x + dx;
+            var ny = head.y + dy;
+
+            if (!_engine.WrapWalls)
+            {
+                if (nx < 0 || nx >= SnakeEngine.Width ||
+                    ny < 0 || ny >= SnakeEngine.Height)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                nx = (nx + SnakeEngine.Width) % SnakeEngine.Width;
+                ny = (ny + SnakeEngine.Height) % SnakeEngine.Height;
+            }
+
+            if (body.Contains((nx, ny)))
+                continue;
+
+            var dist = Math.Abs(food.x - nx) + Math.Abs(food.y - ny);
+            var score = -dist;
+
+            if (best is null || score > best.Value.score)
+            {
+                best = (move, score);
+            }
+        }
+        if (best != null)
+        {
+            best.Value.move();
+        }
+        else
+        {
+            _engine.TurnUp();
+        }
+
     }
 
     private async Task StartLoopAsync()
@@ -97,11 +161,17 @@
                             {
                                 if (!_engine.IsPaused && !_engine.IsGameOver)
                                 {
+                                    if (_autoMode)
+                                    {
+                                        PerformAutoMove();
+                                    }
+
                                     _engine.Tick();
                                     interval = _engine.TickInterval;
                                     shouldRender = true;
                                 }
                             }
+
                         }
                         finally
                         {
@@ -429,6 +499,8 @@
                 <button class="btn" @onclick="TogglePause">@GetPauseButtonLabel(s)</button>
                 <button class="btn" @onclick="ResetGame">Reset</button>
                 <button class="btn" @onclick="ToggleWrap">@GetWrapButtonLabel(s)</button>
+                <button class="btn" @onclick="ToggleAuto">@(_autoMode ? "Auto AUS" : "Auto AN")</button>
+
             </div>
         </aside>
 
