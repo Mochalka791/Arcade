@@ -1,0 +1,338 @@
+﻿.profil {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vh, 3rem) 1.25rem 3rem;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    scrollbar-width: thin; 
+    scrollbar-color: #2f8bff55 transparent;
+}
+
+.profil__header {
+    text-align: center;
+    margin-bottom: clamp(2rem, 5vh, 3rem);
+}
+
+.profil__title {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.8rem;
+    background: linear-gradient(120deg, #5cf0c8, #2f8bff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.profil__greeting {
+    font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+    color: rgba(223, 234, 255, 0.85);
+    margin-bottom: 0.4rem;
+}
+
+.profil__username {
+    font-weight: 700;
+    color: #5cf0c8;
+}
+
+.profil__card {
+    background: rgba(15, 28, 58, 0.45);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(152, 185, 255, 0.18);
+    border-radius: 20px;
+    padding: clamp(1.8rem, 4vw, 2.8rem);
+    margin-bottom: clamp(1.5rem, 3vh, 2rem);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+    .profil__card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(47, 139, 255, 0.25);
+    }
+
+.profil__avatar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.profil__avatar-wrapper {
+    position: relative;
+    width: 140px;
+    height: 140px;
+}
+
+.profil__avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid rgba(92, 240, 200, 0.4);
+    box-shadow: 0 8px 32px rgba(47, 139, 255, 0.3);
+}
+
+.profil__avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(92, 240, 200, 0.3), rgba(47, 139, 255, 0.3));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: #5cf0c8;
+    border: 4px solid rgba(92, 240, 200, 0.4);
+    box-shadow: 0 8px 32px rgba(47, 139, 255, 0.3);
+}
+
+.profil__avatar-upload {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(120deg, #5cf0c8, #2f8bff);
+    border: 3px solid #051026;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+    .profil__avatar-upload::before {
+        content: "📷";
+        font-size: 1.2rem;
+    }
+
+.profil__avatar-input {
+    display: none;
+}
+
+.profil__info {
+    display: grid;
+    gap: 1.2rem;
+}
+
+.profil__info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: rgba(47, 139, 255, 0.08);
+    border-radius: 12px;
+    border: 1px solid rgba(152, 185, 255, 0.12);
+}
+
+.profil__info-label {
+    font-size: 0.95rem;
+    color: rgba(223, 234, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+.profil__info-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f5f9ff;
+}
+
+.profil__section-title {
+    font-size: clamp(1.4rem, 3vw, 1.8rem);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: #f5f9ff;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+    .profil__section-title::before {
+        content: "🏆";
+        font-size: 1.5em;
+    }
+
+.profil__scores {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.profil__score-card {
+    background: rgba(15, 28, 58, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(152, 185, 255, 0.18);
+    border-radius: 16px;
+    padding: 1.8rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+    .profil__score-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #5cf0c8, #2f8bff);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .profil__score-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 32px rgba(47, 139, 255, 0.2);
+        border-color: rgba(152, 185, 255, 0.3);
+    }
+
+        .profil__score-card:hover::before {
+            opacity: 1;
+        }
+
+.profil__score-game {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #5cf0c8;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.profil__score-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.profil__score-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.profil__score-label {
+    font-size: 0.9rem;
+    color: rgba(223, 234, 255, 0.7);
+    font-weight: 500;
+}
+
+.profil__score-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #f5f9ff;
+    font-variant-numeric: tabular-nums;
+}
+
+.profil__score-value--highlight {
+    color: #5cf0c8;
+    font-size: 1.6rem;
+}
+
+.profil__actions {
+    display: flex;
+    justify-content: center;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    margin-top: 2rem;
+}
+
+.profil__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.9rem 2rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+}
+
+.profil__button--primary {
+    background: linear-gradient(120deg, #5cf0c8, #2f8bff);
+    color: #051026;
+    box-shadow: 0 10px 35px rgba(47, 139, 255, 0.35);
+}
+
+    .profil__button--primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 40px rgba(47, 139, 255, 0.45);
+    }
+
+.profil__button--secondary {
+    background: rgba(47, 139, 255, 0.15);
+    color: #f5f9ff;
+    border: 2px solid rgba(152, 185, 255, 0.3);
+}
+
+    .profil__button--secondary:hover {
+        background: rgba(47, 139, 255, 0.25);
+        border-color: rgba(152, 185, 255, 0.5);
+        transform: translateY(-2px);
+    }
+
+.profil__empty {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: rgba(223, 234, 255, 0.6);
+    font-size: 1.1rem;
+}
+
+    .profil__empty::before {
+        content: "🎮";
+        display: block;
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+@media (max-width: 640px) {
+    .profil__scores {
+        grid-template-columns: 1fr;
+    }
+
+    .profil__info-item {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+}
+/* ==== Liquid Glass Scrollbar ==== */
+.profil::-webkit-scrollbar {
+    width: 10px; 
+    background: transparent; 
+}
+
+.profil::-webkit-scrollbar-track {
+    background: rgba(10, 20, 35, 0.15);
+    backdrop-filter: blur(6px); 
+    border-radius: 10px;
+}
+
+.profil::-webkit-scrollbar-thumb {
+    background: linear-gradient(120deg, #5cf0c8aa, #2f8bffaa);
+    border-radius: 10px;
+    border: 2px solid rgba(5, 16, 38, 0.8); 
+    box-shadow: 0 0 10px rgba(47, 139, 255, 0.45);
+    transition: all 0.2s ease;
+}
+
+    .profil::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(120deg, #5cf0c8, #2f8bff);
+        box-shadow: 0 0 14px rgba(47, 139, 255, 0.7);
+    }

@@ -2,28 +2,192 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @layout Arcade.Components.Layout.MainLayout
-
 @using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager Nav
 
-<h3>Dein Profil</h3>
+<div class="profil">
+    <div class="profil__header">
+        <p class="profil__greeting">Hi <span class="profil__username">@UserName</span> 👋</p>
+    </div>
 
-<p>Hi <b>@UserName</b> 👋</p>
+    <div class="profil__card">
+        <div class="profil__avatar-section">
+            <div class="profil__avatar-wrapper">
+                @if (!string.IsNullOrEmpty(AvatarUrl))
+                {
+                    <img src="@AvatarUrl" alt="Avatar" class="profil__avatar" />
+                }
+                else
+                {
+                    <div class="profil__avatar-placeholder">
+                        @UserName.Substring(0, 1).ToUpper()
+                    </div>
+                }
+                <label class="profil__avatar-upload" title="Avatar ändern">
+                    <input type="file" class="profil__avatar-input" accept="image/*" @* @onchange="OnAvatarChange *@" />
+                </label>
+            </div>
+        </div>
 
-<a href="/abmelden" class="auth__submit">Logout</a>
+        <div class="profil__info">
+            <div class="profil__info-item">
+                <span class="profil__info-label">Benutzername</span>
+                <span class="profil__info-value">@UserName</span>
+            </div>
+            <div class="profil__info-item">
+                <span class="profil__info-label">Registriert seit</span>
+                <span class="profil__info-value">@RegistrationDate.ToString("dd.MM.yyyy")</span>
+            </div>
+            <div class="profil__info-item">
+                <span class="profil__info-label">Tage dabei</span>
+                <span class="profil__info-value">@((DateTime.Now - RegistrationDate).Days) Tage</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="profil__card">
+        <h2 class="profil__section-title">Persönliche Rekorde</h2>
+
+        <div class="profil__scores">
+            <!-- Snake -->
+            <div class="profil__score-card">
+                <div class="profil__score-game">🐍 Snake</div>
+                <div class="profil__score-stats">
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Highscore</span>
+                        <span class="profil__score-value profil__score-value--highlight">@SnakeHighScore</span>
+                    </div>
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Spiele gespielt</span>
+                        <span class="profil__score-value">@SnakeGamesPlayed</span>
+                    </div>
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Ø Punktzahl</span>
+                        <span class="profil__score-value">@SnakeAvgScore</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tetris -->
+            <div class="profil__score-card">
+                <div class="profil__score-game">🧱 Tetris</div>
+                <div class="profil__score-stats">
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Highscore</span>
+                        <span class="profil__score-value profil__score-value--highlight">@TetrisHighScore</span>
+                    </div>
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Spiele gespielt</span>
+                        <span class="profil__score-value">@TetrisGamesPlayed</span>
+                    </div>
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Max. Level</span>
+                        <span class="profil__score-value">@TetrisMaxLevel</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weitere Spiele (Platzhalter) -->
+            <div class="profil__score-card">
+                <div class="profil__score-game">🎮 Spiel 3</div>
+                <div class="profil__empty">
+                    Noch keine Rekorde
+                </div>
+            </div>
+
+            <div class="profil__score-card">
+                <div class="profil__score-game">🎮 Spiel 4</div>
+                <div class="profil__empty">
+                    Noch keine Rekorde
+                </div>
+            </div>
+
+            <div class="profil__score-card">
+                <div class="profil__score-game">🎮 Spiel 5</div>
+                <div class="profil__empty">
+                    Noch keine Rekorde
+                </div>
+            </div>
+
+            <div class="profil__score-card">
+                <div class="profil__score-game">🎮 Spiel 6</div>
+                <div class="profil__empty">
+                    Noch keine Rekorde
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="profil__actions">
+        <a href="/spiele" class="profil__button profil__button--primary">Zu den Spielen</a>
+        <a href="/abmelden" class="profil__button profil__button--secondary">Logout</a>
+    </div>
+</div>
 
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
     string UserName = "Spieler";
+    string? AvatarUrl = null;
+    DateTime RegistrationDate = DateTime.Now.AddDays(-42); // Beispiel: vor 42 Tagen registriert
+
+    // Snake Statistiken (später aus Database)
+    int SnakeHighScore = 0;
+    int SnakeGamesPlayed = 0;
+    int SnakeAvgScore = 0;
+
+    // Tetris Statistiken (später aus Database)
+    int TetrisHighScore = 0;
+    int TetrisGamesPlayed = 0;
+    int TetrisMaxLevel = 0;
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateTask!;
         if (auth.User.Identity?.IsAuthenticated == true)
+        {
             UserName = auth.User.Identity!.Name!;
+
+            // TODO: Lade Statistiken aus der Database
+            // await LoadUserStats();
+
+            // Temporäre Beispieldaten
+            SnakeHighScore = 1250;
+            SnakeGamesPlayed = 47;
+            SnakeAvgScore = 856;
+
+            TetrisHighScore = 8430;
+            TetrisGamesPlayed = 23;
+            TetrisMaxLevel = 12;
+        }
         else
+        {
             Nav.NavigateTo("/anmelden", true);
+        }
     }
+
+    private async Task OnAvatarChange(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null)
+        {
+            // TODO: Upload Avatar zu Server
+            // var buffer = new byte[file.Size];
+            // await file.OpenReadStream().ReadAsync(buffer);
+            // AvatarUrl = await UploadAvatar(buffer);
+
+            // Temporär: Zeige lokales Bild
+            var reader = new System.IO.StreamReader(file.OpenReadStream());
+            // In Produktion: Bild hochladen und URL speichern
+        }
+    }
+
+    // TODO: Methode zum Laden der Statistiken aus der Database
+    // private async Task LoadUserStats()
+    // {
+    //     // var stats = await Database.GetUserStats(UserName);
+    //     // SnakeHighScore = stats.SnakeHighScore;
+    //     // ...
+    // }
 }
