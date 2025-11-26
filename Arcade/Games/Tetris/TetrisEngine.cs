@@ -155,9 +155,6 @@ public sealed class TetrisEngine
         CurrentPiece = newCurrent;
         ResetCurrentPiecePosition();
     }
-
-    // ---------- Helpers ----------
-
     private void SpawnNewPiece()
     {
         if (_nextPieces.Count == 0)
@@ -271,7 +268,7 @@ public sealed class TetrisEngine
             for (var c = 0; c < BoardWidth; c++)
                 _lockedCells[0, c] = null;
 
-            r++; // dieselbe Zeile erneut prüfen (nach Down-Shift)
+            r++; 
         }
         return lines;
     }
@@ -292,8 +289,6 @@ public sealed class TetrisEngine
         Score += points;
         Level = LinesCleared / 10 + 1;
     }
-
-    // ---------- Rendering helpers ----------
 
     public IReadOnlyList<BoardPoint> GetCurrentCells()
     {

@@ -11,6 +11,7 @@ public class ArcadeDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<SnakeStats> SnakeStats => Set<SnakeStats>();
+    public DbSet<TetrisStats> TetrisStats => Set<TetrisStats>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -53,7 +54,27 @@ public class ArcadeDbContext : DbContext
                 .HasDefaultValue(0m);
 
             e.HasOne(x => x.User)
-                .WithMany() 
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<TetrisStats>(e =>
+        {
+            e.ToTable("TetrisStats");
+
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.HighScore)
+                .IsRequired()
+                .HasDefaultValue(0);
+
+            e.Property(x => x.GamesPlayed)
+                .IsRequired()
+                .HasDefaultValue(0);
+
+            e.HasOne(x => x.User)
+                .WithMany()
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

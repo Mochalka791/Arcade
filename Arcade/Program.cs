@@ -4,6 +4,8 @@ using Arcade.Data.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Arcade.Data.Services;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,13 +21,12 @@ var serverVersion = new MariaDbServerVersion(new Version(10, 4, 32));
 
 builder.Services.AddDbContext<ArcadeDbContext>(options =>
     options.UseMySql(cs, serverVersion));
-
-// PasswordHasher
-builder.Services.AddScoped<PasswordHasher>();
+builder.Services.AddScoped<ITetrisStatsService, TetrisStatsService>();
+builder.Services.AddScoped<ISnakeStatsService, SnakeStatsService>();
 
 builder.Services.AddHttpContextAccessor();
-
-// Cookie Auth
+// PasswordHasher
+builder.Services.AddScoped<PasswordHasher>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -46,7 +47,6 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// DB-Migration
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArcadeDbContext>();
@@ -75,14 +75,11 @@ app.UseAuthorization();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
-// Razor Components aktivieren
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
 
-// API Endpoints laden (Login/Registrierung etc.)
 app.MapAuthEndpoints();
 
-// LOGOUT-ROUTE
 app.MapGet("/abmelden", async (HttpContext ctx) =>
 {
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

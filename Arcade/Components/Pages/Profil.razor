@@ -159,7 +159,7 @@
     {
         await LoadUserInfoAsync();
         await LoadSnakeStatsAsync();
-        // await LoadTetrisStatsAsync();
+        await LoadTetrisStatsAsync();
     }
 
     // User laden (Name, Avatar, Registrierungsdatum)
@@ -214,30 +214,30 @@
         }
     }
 
-    // // Tetris Stats laden
-    // private async Task LoadTetrisStatsAsync()
-    // {
-    //     var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-    //     var user = auth.User;
+    // Tetris Stats laden
+    private async Task LoadTetrisStatsAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
 
-    //     if (user.Identity is not { IsAuthenticated: true })
-    //         return;
+        if (user.Identity is not { IsAuthenticated: true })
+            return;
 
-    //     int? userId = await ResolveUserIdAsync(user);
+        int? userId = await ResolveUserIdAsync(user);
 
-    //     if (userId is null)
-    //         return;
+        if (userId is null)
+            return;
 
-    //     var stats = await Db.TetrisStats
-    //         .FirstOrDefaultAsync(t => t.UserId == userId);
+        var stats = await Db.TetrisStats
+            .FirstOrDefaultAsync(t => t.UserId == userId);
 
-    //     if (stats != null)
-    //     {
-    //         _tetrisHighScore = stats.HighScore;
-    //         _tetrisGamesPlayed = stats.GamesPlayed;
-    //         _tetrisMaxLevel = stats.MaxLevel;
-    //     }
-    // }
+        if (stats != null)
+        {
+            _tetrisHighScore = stats.HighScore;
+            _tetrisGamesPlayed = stats.GamesPlayed;
+            _tetrisMaxLevel = stats.MaxLevel;
+        }
+    }
 
     // UserId bestimmen (Claim → Fallback Username)
     private async Task<int?> ResolveUserIdAsync(ClaimsPrincipal principal)
