@@ -1,0 +1,591 @@
+﻿@page "/minesweeper"
+@layout Arcade.Components.Layout.MainLayout
+@using System.Diagnostics
+@using Microsoft.AspNetCore.Components.Web
+@rendermode Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer
+
+<PageTitle>Minesweeper</PageTitle>
+
+<section class="minesweeper-page">
+    <header class="minesweeper-header">
+        <h1 class="minesweeper-title">Minesweeper</h1>
+
+        <div class="minesweeper-controls">
+            <div class="ms-difficulty">
+                <button class="@GetDifficultyClass(DifficultyLevel.Beginner)"
+                        @onclick="() => ChangeDifficulty(DifficultyLevel.Beginner)">
+                    Beginner
+                </button>
+                <button class="@GetDifficultyClass(DifficultyLevel.Intermediate)"
+                        @onclick="() => ChangeDifficulty(DifficultyLevel.Intermediate)">
+                    Intermediate
+                </button>
+                <button class="@GetDifficultyClass(DifficultyLevel.Expert)"
+                        @onclick="() => ChangeDifficulty(DifficultyLevel.Expert)">
+                    Expert
+                </button>
+            </div>
+
+            <div class="ms-hud">
+                <div class="ms-counter">
+                    <span class="label">Mines</span>
+                    <span class="value">@MinesLeft</span>
+                </div>
+
+                <button class="ms-face"
+                        title="New game"
+                        @onclick="StartNewGame">
+                    @GetFaceEmoji()
+                </button>
+
+                <div class="ms-counter">
+                    <span class="label">Time</span>
+                    <span class="value">@ElapsedSeconds.ToString("0.000")</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="minesweeper-main">
+
+        <div class="ms-board-wrapper">
+            @if (_grid is null)
+            {
+                <div class="ms-empty">Loading…</div>
+            }
+            else
+            {
+                <div class="ms-board"
+                     style="--cols:@_width; --rows:@_height;">
+                    @for (var y = 0; y < _height; y++)
+                    {
+                        for (var x = 0; x < _width; x++)
+                        {
+                            var cell = _grid[x, y];
+                     
+
+                <button class="@GetCellClass(cell)"
+                        @onmousedown="@(e => HandleMouseDown(e, cell))">
+                    @RenderCellContent(cell)
+                </button>
+
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <aside class="ms-results-panel">
+            <h2 class="ms-results-title">
+                @if (_state == GameState.Won)
+                {
+                    <span>🎉 Congratulations!</span>
+                }
+                else if (_state == GameState.Lost)
+                {
+                    <span>💥 Boom!</span>
+                }
+                else
+                {
+                    <span>🧩 Ready to play</span>
+                }
+            </h2>
+
+            <p class="ms-rank-line">
+                Rank: <strong>@CurrentRank</strong>
+            </p>
+
+            @if (_state == GameState.Won)
+            {
+                <p class="ms-win-text">
+                    You cleared the field on <strong>@_difficulty</strong>!
+                </p>
+            }
+            else if (_state == GameState.Lost)
+            {
+                <p class="ms-lose-text">
+                    You hit a mine. Try again!
+                </p>
+            }
+            else
+            {
+                <p class="ms-info-text">
+                    Left click to reveal, right click to flag.
+                </p>
+            }
+
+            <ul class="ms-stats">
+                <li>
+                    <span>Time:</span>
+                    <span>@ElapsedSeconds.ToString("0.000") sec</span>
+                </li>
+                <li>
+                    <span>3BV:</span>
+                    <span>@(ThreeBV > 0 ? ThreeBV.ToString() : "–")</span>
+                </li>
+                <li>
+                    <span>3BV/s:</span>
+                    <span>
+                        @(ThreeBVPerSecond > 0
+                            ? ThreeBVPerSecond.ToString("0.0000")
+                            : "–")
+                    </span>
+                </li>
+                <li>
+                    <span>Clicks:</span>
+                    <span>@_clicksTotal</span>
+                </li>
+                <li>
+                    <span>Efficiency:</span>
+                    <span>
+                        @(EfficiencyPercent > 0
+                            ? EfficiencyPercent.ToString("0") + "%"
+                            : "–")
+                    </span>
+                </li>
+            </ul>
+
+            <div class="ms-rewards">
+                <p>⭐ Experience: +@XpGain</p>
+                <p>🟡 Minecoins: +@CoinGain</p>
+                <p>🏆 Trophies: +@TrophyGain</p>
+            </div>
+
+            <button class="ms-newgame-btn" @onclick="StartNewGame">
+                New Game
+            </button>
+        </aside>
+    </div>
+</section>
+
+@code {
+    private enum GameState
+    {
+        Ready,
+        Playing,
+        Won,
+        Lost
+    }
+
+    public enum DifficultyLevel
+    {
+        Beginner,
+        Intermediate,
+        Expert
+    }
+
+    private sealed class Cell
+    {
+        public int X { get; init; }
+        public int Y { get; init; }
+
+        public bool IsMine { get; set; }
+        public bool IsRevealed { get; set; }
+        public bool IsFlagged { get; set; }
+
+        public int AdjacentMines { get; set; }
+    }
+
+    private DifficultyLevel _difficulty = DifficultyLevel.Beginner;
+
+    private int _width;
+    private int _height;
+    private int _mineCount;
+
+    private Cell[,]? _grid;
+
+    private readonly Random _rng = new();
+
+    private GameState _state = GameState.Ready;
+
+    private readonly Stopwatch _stopwatch = new();
+    private double ElapsedSeconds => _stopwatch.Elapsed.TotalSeconds;
+
+    private int _clicksTotal;
+
+    private string CurrentRank => _state == GameState.Won ? "Rookie" : "Unranked";
+    private int XpGain => _state == GameState.Won ? 12 : 0;
+    private int CoinGain => _state == GameState.Won ? 1 : 0;
+    private int TrophyGain => _state == GameState.Won ? 8 : 0;
+
+    private int ThreeBV => _revealedSafeCells;
+    private double ThreeBVPerSecond
+        => _state == GameState.Won && ElapsedSeconds > 0
+            ? ThreeBV / ElapsedSeconds
+            : 0;
+
+    private int _revealedSafeCells;
+    private double EfficiencyPercent
+        => _clicksTotal > 0
+            ? (ThreeBV / (double)_clicksTotal) * 100.0
+            : 0;
+
+    private int MinesLeft
+    {
+        get
+        {
+            if (_grid is null)
+            {
+                return 0;
+            }
+
+            var flagged = 0;
+            foreach (var cell in _grid)
+            {
+                if (cell.IsFlagged)
+                {
+                    flagged++;
+                }
+            }
+
+            return Math.Max(0, _mineCount - flagged);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        ApplyDifficulty(_difficulty);
+        StartNewGame();
+    }
+
+    private void ChangeDifficulty(DifficultyLevel diff)
+    {
+        if (_difficulty == diff)
+        {
+            return;
+        }
+
+        _difficulty = diff;
+        ApplyDifficulty(diff);
+        StartNewGame();
+    }
+
+    private void ApplyDifficulty(DifficultyLevel diff)
+    {
+        switch (diff)
+        {
+            case DifficultyLevel.Beginner:
+                _width = 9;
+                _height = 9;
+                _mineCount = 10;
+                break;
+
+            case DifficultyLevel.Intermediate:
+                _width = 16;
+                _height = 16;
+                _mineCount = 40;
+                break;
+
+            case DifficultyLevel.Expert:
+                _width = 30;
+                _height = 16;
+                _mineCount = 99;
+                break;
+        }
+    }
+
+    private void HandleMouseDown(MouseEventArgs e, Cell cell)
+    {
+        if (e.Button == 0)
+        {
+            OnLeftClick(cell);
+        }
+        else if (e.Button == 2)
+        {
+            OnRightClick(cell);
+        }
+    }
+
+    private void StartNewGame()
+    {
+        _grid = new Cell[_width, _height];
+
+        for (var x = 0; x < _width; x++)
+        {
+            for (var y = 0; y < _height; y++)
+            {
+                _grid[x, y] = new Cell
+                {
+                    X = x,
+                    Y = y
+                };
+            }
+        }
+
+        var placed = 0;
+        while (placed < _mineCount)
+        {
+            var x = _rng.Next(_width);
+            var y = _rng.Next(_height);
+
+            var cell = _grid[x, y];
+            if (cell.IsMine)
+            {
+                continue;
+            }
+
+            cell.IsMine = true;
+            placed++;
+        }
+
+        for (var x = 0; x < _width; x++)
+        {
+            for (var y = 0; y < _height; y++)
+            {
+                var cell = _grid[x, y];
+                if (cell.IsMine)
+                {
+                    cell.AdjacentMines = -1;
+                }
+                else
+                {
+                    cell.AdjacentMines = CountAdjacentMines(x, y);
+                }
+            }
+        }
+
+        _state = GameState.Ready;
+        _clicksTotal = 0;
+        _revealedSafeCells = 0;
+
+        _stopwatch.Reset();
+
+        StateHasChanged();
+    }
+
+    private int CountAdjacentMines(int x, int y)
+    {
+        var count = 0;
+
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    continue;
+                }
+
+                var nx = x + dx;
+                var ny = y + dy;
+
+                if (nx < 0 || ny < 0 || nx >= _width || ny >= _height)
+                {
+                    continue;
+                }
+
+                if (_grid![nx, ny].IsMine)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private void OnLeftClick(Cell cell)
+    {
+        if (_state == GameState.Lost || _state == GameState.Won || cell.IsFlagged)
+        {
+            return;
+        }
+
+        if (_state == GameState.Ready)
+        {
+            _state = GameState.Playing;
+            _stopwatch.Start();
+        }
+
+        _clicksTotal++;
+
+        if (cell.IsRevealed)
+        {
+            return;
+        }
+
+        if (cell.IsMine)
+        {
+            RevealAllMines();
+            _state = GameState.Lost;
+            _stopwatch.Stop();
+            return;
+        }
+
+        RevealCellRecursive(cell);
+
+        if (CheckWin())
+        {
+            _state = GameState.Won;
+            _stopwatch.Stop();
+        }
+    }
+
+    private void OnRightClick(Cell cell)
+    {
+        if (_state == GameState.Lost || _state == GameState.Won)
+        {
+            return;
+        }
+
+        _clicksTotal++;
+
+        if (cell.IsRevealed)
+        {
+            return;
+        }
+
+        cell.IsFlagged = !cell.IsFlagged;
+    }
+
+    private void RevealCellRecursive(Cell cell)
+    {
+        if (cell.IsRevealed || cell.IsFlagged)
+        {
+            return;
+        }
+
+        cell.IsRevealed = true;
+
+        if (!cell.IsMine)
+        {
+            _revealedSafeCells++;
+        }
+
+        if (cell.AdjacentMines > 0)
+        {
+            return;
+        }
+
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    continue;
+                }
+
+                var nx = cell.X + dx;
+                var ny = cell.Y + dy;
+
+                if (nx < 0 || ny < 0 || nx >= _width || ny >= _height)
+                {
+                    continue;
+                }
+
+                var neighbor = _grid![nx, ny];
+                if (!neighbor.IsRevealed && !neighbor.IsMine)
+                {
+                    RevealCellRecursive(neighbor);
+                }
+            }
+        }
+    }
+
+    private void RevealAllMines()
+    {
+        if (_grid is null)
+        {
+            return;
+        }
+
+        foreach (var cell in _grid)
+        {
+            if (cell.IsMine)
+            {
+                cell.IsRevealed = true;
+            }
+        }
+    }
+
+    private bool CheckWin()
+    {
+        if (_grid is null)
+        {
+            return false;
+        }
+
+        foreach (var cell in _grid)
+        {
+            if (!cell.IsMine && !cell.IsRevealed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private string GetFaceEmoji()
+    {
+        return _state switch
+        {
+            GameState.Ready => "🙂",
+            GameState.Playing => "😐",
+            GameState.Won => "😎",
+            GameState.Lost => "☠️",
+            _ => "🙂"
+        };
+    }
+
+    private string GetDifficultyClass(DifficultyLevel level)
+    {
+        var baseClass = "ms-diff-btn";
+        if (level == _difficulty)
+        {
+            return baseClass + " ms-diff-btn--active";
+        }
+
+        return baseClass;
+    }
+
+    private RenderFragment RenderCellContent(Cell cell) => builder =>
+    {
+        if (!cell.IsRevealed)
+        {
+            if (cell.IsFlagged)
+            {
+                builder.AddContent(0, "🚩");
+            }
+
+            return;
+        }
+
+        if (cell.IsMine)
+        {
+            builder.AddContent(1, "💣");
+            return;
+        }
+
+        if (cell.AdjacentMines > 0)
+        {
+            builder.OpenElement(2, "span");
+            builder.AddAttribute(3, "class", $"ms-num ms-num-{cell.AdjacentMines}");
+            builder.AddContent(4, cell.AdjacentMines);
+            builder.CloseElement();
+        }
+    };
+
+    private string GetCellClass(Cell cell)
+    {
+        var classes = "ms-cell";
+
+        if (cell.IsRevealed)
+        {
+            classes += " ms-cell--revealed";
+
+            if (cell.IsMine)
+            {
+                classes += " ms-cell--mine";
+            }
+        }
+
+        if (cell.IsFlagged && !cell.IsRevealed)
+        {
+            classes += " ms-cell--flagged";
+        }
+
+        return classes;
+    }
+}

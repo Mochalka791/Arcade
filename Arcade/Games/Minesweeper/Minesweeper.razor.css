@@ -1,0 +1,299 @@
+﻿.minesweeper-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+    color: #e3ecff;
+}
+
+.minesweeper-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.minesweeper-title {
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    font-weight: 700;
+    margin: 0;
+    background: linear-gradient(120deg,#5cf0c8,#2f8bff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.minesweeper-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.ms-difficulty {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.ms-diff-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(15,20,30,0.85);
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    color: #dfe7ff;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+    .ms-diff-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 12px rgba(86,204,242,0.4);
+    }
+
+.ms-diff-btn--active {
+    background: linear-gradient(120deg,#2f80ed,#56ccf2);
+    color: #0a0c12;
+}
+
+.ms-hud {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.ms-counter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 70px;
+    padding: 0.25rem 0.5rem;
+    border-radius: 10px;
+    background: radial-gradient(circle at top,rgba(255,255,255,0.05),rgba(0,0,0,0.7));
+    border: 1px solid rgba(255,255,255,0.12);
+}
+
+    .ms-counter .label {
+        font-size: 0.7rem;
+        opacity: 0.7;
+    }
+
+    .ms-counter .value {
+        font-family: "Consolas","SF Mono",monospace;
+        font-size: 1.2rem;
+    }
+
+.ms-face {
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: radial-gradient(circle at 30% 0%,rgba(255,255,255,0.12),rgba(8,10,18,0.95));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    cursor: pointer;
+    box-shadow: 0 0 12px rgba(0,0,0,0.55);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+    .ms-face:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 18px rgba(92,240,200,0.45);
+    }
+
+/* Main layout */
+
+.minesweeper-main {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 280px;
+    gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+    .minesweeper-main {
+        grid-template-columns: minmax(0,1fr);
+    }
+}
+
+.ms-board-wrapper {
+    display: flex;
+    justify-content: center;
+}
+
+.ms-board {
+    --cell-size: 28px;
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--cell-size));
+    grid-template-rows: repeat(var(--rows), var(--cell-size));
+    background: radial-gradient(circle at top,rgba(255,255,255,0.04),rgba(0,0,0,0.85));
+    border-radius: 14px;
+    padding: 8px;
+    box-shadow: 0 0 24px rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.12);
+}
+
+.ms-empty {
+    padding: 2rem;
+    opacity: 0.8;
+}
+
+/* Cells */
+
+.ms-cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(145deg,#202634,#131722);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Consolas","SF Mono",monospace;
+    font-size: 0.95rem;
+    color: #e2ebff;
+    transition: background 0.1s ease, transform 0.06s ease, box-shadow 0.1s ease;
+}
+
+    .ms-cell:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 10px rgba(86,204,242,0.35);
+    }
+
+.ms-cell--revealed {
+    background: radial-gradient(circle at top,rgba(255,255,255,0.04),rgba(10,14,20,0.95));
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.8);
+    cursor: default;
+}
+
+.ms-cell--mine.ms-cell--revealed {
+    background: radial-gradient(circle at center,rgba(255,0,91,0.85),rgba(30,4,10,0.95));
+    animation: ms-explosion 0.25s ease-out;
+}
+
+.ms-cell--flagged {
+    background: linear-gradient(145deg,#2b3044,#181b28);
+}
+
+/* Zahlenfarben wie klassisches Minesweeper */
+
+.ms-num-1 {
+    color: #3b7cff;
+}
+
+.ms-num-2 {
+    color: #2ecc71;
+}
+
+.ms-num-3 {
+    color: #e74c3c;
+}
+
+.ms-num-4 {
+    color: #2c3e50;
+}
+
+.ms-num-5 {
+    color: #b27b16;
+}
+
+.ms-num-6 {
+    color: #1abc9c;
+}
+
+.ms-num-7 {
+    color: #000000;
+}
+
+.ms-num-8 {
+    color: #7f8c8d;
+}
+
+@keyframes ms-explosion {
+    from {
+        transform: scale(0.7);
+    }
+
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Result Panel */
+
+.ms-results-panel {
+    background: rgba(14,16,26,0.9);
+    border-radius: 14px;
+    padding: 1.1rem 1rem 1rem;
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 0 20px rgba(0,0,0,0.75);
+    backdrop-filter: blur(12px);
+}
+
+.ms-results-title {
+    margin: 0 0 0.4rem;
+    font-size: 1.1rem;
+}
+
+.ms-rank-line {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+    opacity: 0.85;
+}
+
+.ms-win-text,
+.ms-lose-text,
+.ms-info-text {
+    margin: 0 0 0.8rem;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.ms-stats {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.8rem;
+    font-size: 0.9rem;
+}
+
+    .ms-stats li {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.18rem 0;
+        border-bottom: 1px dashed rgba(255,255,255,0.08);
+    }
+
+        .ms-stats li span:first-child {
+            opacity: 0.75;
+        }
+
+.ms-rewards {
+    font-size: 0.9rem;
+    margin-bottom: 0.9rem;
+}
+
+    .ms-rewards p {
+        margin: 0.08rem 0;
+    }
+
+.ms-newgame-btn {
+    width: 100%;
+    border-radius: 999px;
+    padding: 0.45rem 0.75rem;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    background: linear-gradient(120deg,#5cf0c8,#2f8bff);
+    color: #050712;
+    box-shadow: 0 0 16px rgba(92,240,200,0.45);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+    .ms-newgame-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 22px rgba(92,240,200,0.7);
+    }
