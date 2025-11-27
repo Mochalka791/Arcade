@@ -105,9 +105,9 @@
             </div>
 
             <div class="profil__score-card">
-                <div class="profil__score-game">🎮 Spiel 3</div>
+                <div class="profil__score-game">Minesweeper</div>
                 <div class="profil__empty">
-                    Noch keine Rekorde
+                    
                 </div>
             </div>
 
@@ -162,7 +162,6 @@
         await LoadTetrisStatsAsync();
     }
 
-    // User laden (Name, Avatar, Registrierungsdatum)
     private async Task LoadUserInfoAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -189,7 +188,6 @@
         }
     }
 
-    // Snake Stats laden
     private async Task LoadSnakeStatsAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -214,7 +212,6 @@
         }
     }
 
-    // Tetris Stats laden
     private async Task LoadTetrisStatsAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -239,7 +236,6 @@
         }
     }
 
-    // UserId bestimmen (Claim → Fallback Username)
     private async Task<int?> ResolveUserIdAsync(ClaimsPrincipal principal)
     {
         var idClaim =
