@@ -25,18 +25,21 @@
 
 <section class="tetris">
 
-    <!-- HEADER -->
     <header class="tetris__header">
         <h1>Tetris</h1>
         <div class="tetris__actions">
+            <button class="arcade-btn" style="scale: 0.9;" @onclick="ToggleAuto">
+                @_engine.AutoPlay ? "Auto"
+            </button>
+
             <button class="arcade-btn" @onclick="TogglePause">
                 @(_engine.IsPaused ? "Weiter" : "Pause")
             </button>
+
             <button class="arcade-btn" @onclick="ResetGameAsync">Neu starten</button>
-            <button class="arcade-btn" @onclick="HardDropAsync" disabled="@(_engine.IsPaused || _engine.IsGameOver)">
-                Hard Drop
-            </button>
+
         </div>
+
     </header>
 
     <div class="tetris__layout">
@@ -52,8 +55,8 @@
 
             @{
                 var currentCells = _engine.GetCurrentCells();
-                var ghostCells   = _engine.GetGhostCells();
-                var type         = _engine.CurrentPiece;
+                var ghostCells = _engine.GetGhostCells();
+                var type = _engine.CurrentPiece;
             }
 
             @for (var r = 0; r < TetrisEngine.BoardHeight; r++)
@@ -86,31 +89,31 @@
                 <h2>Top 10</h2>
                 <table class="tetris-top">
                     <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Spieler</th>
-                        <th>Score</th>
-                    </tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Spieler</th>
+                            <th>Score</th>
+                        </tr>
                     </thead>
                     <tbody>
-                    @if (_topRecords.Count == 0)
-                    {
-                        <tr>
-                            <td colspan="3" class="empty">Noch keine Einträge</td>
-                        </tr>
-                    }
-                    else
-                    {
-                        @for (var i = 0; i < _topRecords.Count; i++)
+                        @if (_topRecords.Count == 0)
                         {
-                            var rec = _topRecords[i];
                             <tr>
-                                <td>@(i + 1)</td>
-                                <td>@rec.UserName</td>
-                                <td>@rec.HighScore</td>
+                                <td colspan="3" class="empty">Noch keine Einträge</td>
                             </tr>
                         }
-                    }
+                        else
+                        {
+                            @for (var i = 0; i < _topRecords.Count; i++)
+                            {
+                                var rec = _topRecords[i];
+                                <tr>
+                                    <td>@(i + 1)</td>
+                                    <td>@rec.UserName</td>
+                                    <td>@rec.HighScore</td>
+                                </tr>
+                            }
+                        }
                     </tbody>
                 </table>
             </div>
@@ -162,25 +165,12 @@
         }
     }
 
-    // --------------------------------------------------
-    // Game Loop
-    // --------------------------------------------------
     private async Task StartLoopAsync()
     {
         StopLoop();
         _ctsLoop = new CancellationTokenSource();
         _ = RunLoopAsync(_ctsLoop.Token);
         await Task.CompletedTask;
-    }
-
-    private void StopLoop()
-    {
-        var old = Interlocked.Exchange(ref _ctsLoop, null);
-        if (old is null) return;
-
-        try { old.Cancel(); }
-        catch { }
-        finally { old.Dispose(); }
     }
 
     private async Task RunLoopAsync(CancellationToken token)
@@ -194,7 +184,6 @@
                 if (_engine.IsPaused)
                     continue;
 
-                // GameOver -> einmal komplett speichern
                 if (_engine.IsGameOver)
                 {
                     if (!_statsSavedThisGame)
@@ -223,9 +212,17 @@
                 await InvokeAsync(StateHasChanged);
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void StopLoop()
+    {
+        var old = Interlocked.Exchange(ref _ctsLoop, null);
+        if (old is null) return;
+
+        try { old.Cancel(); }
+        catch { }
+        finally { old.Dispose(); }
     }
 
     private async Task SaveStatsAsync(int score, int level, bool isGameOver)
@@ -249,7 +246,6 @@
             .Select(t => new TetrisRecord(t.User.Username, t.HighScore))
             .ToListAsync();
     }
-
 
     private async Task<int?> ResolveUserIdAsync()
     {
@@ -282,6 +278,8 @@
                 await ResetGameAsync();
             return;
         }
+
+
 
         if (e.Key is "p" or "P")
         {
@@ -329,6 +327,11 @@
 
         StateHasChanged();
         await Task.CompletedTask;
+    }
+
+    private void ToggleAuto()
+    {
+        _engine.AutoPlay = !_engine.AutoPlay;
     }
 
     private async Task ResetGameAsync()

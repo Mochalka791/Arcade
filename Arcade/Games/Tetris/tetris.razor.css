@@ -16,11 +16,11 @@
     gap: 1rem;
     flex-shrink: 0;
 }
-
 .tetris__actions {
-    display: inline-flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    flex-wrap: wrap; 
 }
 
     .tetris__actions button {
@@ -54,7 +54,6 @@
             cursor: not-allowed;
         }
 
-        /* Hard Drop und Debug ausblenden */
         .tetris__actions button:nth-child(3),
         .tetris__actions button:nth-child(4),
         .tetris__panel.debug {
