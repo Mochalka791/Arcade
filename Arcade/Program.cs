@@ -23,6 +23,7 @@ builder.Services.AddDbContext<ArcadeDbContext>(options =>
     options.UseMySql(cs, serverVersion));
 builder.Services.AddScoped<ITetrisStatsService, TetrisStatsService>();
 builder.Services.AddScoped<ISnakeStatsService, SnakeStatsService>();
+builder.Services.AddScoped<IMinesweeperStatsService, MinesweeperStatsService>();
 
 builder.Services.AddHttpContextAccessor();
 // PasswordHasher

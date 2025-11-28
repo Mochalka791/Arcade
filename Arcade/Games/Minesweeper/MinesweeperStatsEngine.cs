@@ -1,4 +1,4 @@
-﻿public static class MinesweeperStats
+﻿public static class MinesweeperStatsEngine
 {
     public static int Calculate3BV(MinesweeperEngine e)
         => e.RevealedSafeCells;

@@ -1,9 +1,18 @@
 ﻿@page "/minesweeper"
 @layout Arcade.Components.Layout.MainLayout
 @rendermode Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer
+
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Authorization
 @using System.Diagnostics
+@using System.Linq
+@using Arcade.Data.Services
 @using Arcade.Games.Minesweeper
+@using Arcade.Data.Entities
+@using System.Security.Claims
+
+@inject IMinesweeperStatsService MinesweeperStatsService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Minesweeper</PageTitle>
 
@@ -95,7 +104,7 @@
             </h2>
 
             <p class="ms-rank-line">
-               @*  Rank: <strong>@Rank</strong> *@
+                @* Rank / XP später *@
             </p>
 
             @if (_state == GameState.Won)
@@ -149,9 +158,7 @@
             </ul>
 
             <div class="ms-rewards">
-             @*    <p>⭐ Experience: +@Xp</p>
-                <p>🟡 Minecoins: +@Coins</p>
-                <p>🏆 Trophies: +@Trophies</p> *@
+                @* Platz für XP / Coins / Trophies *@
             </div>
 
             <button class="ms-newgame-btn" @onclick="StartNewGame">
@@ -183,6 +190,8 @@
     private GameState _state = GameState.Ready;
 
     private readonly Stopwatch _stopwatch = new();
+    private System.Timers.Timer? _timer;
+
     private int _clicksTotal;
 
     private double TimeSeconds => _stopwatch.Elapsed.TotalSeconds;
@@ -190,29 +199,19 @@
     private int MinesLeft
         => _engine is null
             ? 0
-            : Math.Max(0,
+            : Math.Max(
+                0,
                 _engine.Mines - _engine.Grid.Cast<Cell>().Count(c => c.IsFlagged));
 
     private int ThreeBV
-        => _engine is null ? 0 : MinesweeperStats.Calculate3BV(_engine);
+        => _engine is null ? 0 : MinesweeperStatsEngine.Calculate3BV(_engine);
 
     private double ThreeBVPerSecond
-        => MinesweeperStats.Calculate3BVPerSecond(ThreeBV, TimeSeconds);
+        => MinesweeperStatsEngine.Calculate3BVPerSecond(ThreeBV, TimeSeconds);
 
     private double EfficiencyPercent
-        => MinesweeperStats.CalculateEfficiency(ThreeBV, _clicksTotal);
+        => MinesweeperStatsEngine.CalculateEfficiency(ThreeBV, _clicksTotal);
 
-    // private string Rank
-    //     => MinesweeperStats.GetRank(_state == GameState.Won);
-
-    // private int Xp
-    //     => MinesweeperStats.GetXP(_state == GameState.Won);
-
-    // private int Coins
-    //     => MinesweeperStats.GetCoins(_state == GameState.Won);
-
-    // private int Trophies
-    //     => MinesweeperStats.GetTrophies(_state == GameState.Won);
 
     protected override void OnInitialized()
     {
@@ -234,17 +233,20 @@
         _state = GameState.Ready;
         _stopwatch.Reset();
     }
-    private System.Timers.Timer? _timer;
+
     private void StartNewGame()
     {
         CreateEngine();
         _stopwatch.Reset();
+
         _timer?.Stop();
-        _timer = new System.Timers.Timer(100); 
+        _timer = new System.Timers.Timer(100);
         _timer.Elapsed += (_, _) =>
         {
             if (_state == GameState.Playing)
+            {
                 InvokeAsync(StateHasChanged);
+            }
         };
         _timer.Start();
     }
@@ -257,10 +259,10 @@
         }
 
         _difficulty = diff;
-        CreateEngine();
+        StartNewGame();
     }
 
-    private void HandleMouseDown(MouseEventArgs e, Cell cell)
+    private async Task HandleMouseDown(MouseEventArgs e, Cell cell)
     {
         if (_engine is null)
         {
@@ -294,11 +296,15 @@
             _state = _engine.IsWin ? GameState.Won : GameState.Lost;
             _stopwatch.Stop();
             _timer?.Stop();
-        }
 
+            if (_engine.IsWin)
+            {
+                await SaveStatsAsync();
+            }
+        }
     }
 
-    private void ForceWin()
+    private async Task ForceWin()
     {
         if (_engine is null)
         {
@@ -314,6 +320,39 @@
         }
 
         _stopwatch.Stop();
+        _timer?.Stop();
+
+        await SaveStatsAsync();
+    }
+
+    private async Task SaveStatsAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            return;
+        }
+
+        var userId = user.FindFirst("sub")?.Value
+                     ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                     ?? user.Identity!.Name!;
+
+        var record = new MinesweeperStats
+        {
+            UserId = userId,
+            Difficulty = _difficulty.ToString(),
+            TimeSeconds = Math.Round(TimeSeconds, 1),
+            ThreeBV = ThreeBV,
+            ThreeBVPerSecond = ThreeBVPerSecond,
+            Clicks = _clicksTotal,
+            EfficiencyPercent = EfficiencyPercent,
+            Won = true,
+            PlayedAt = DateTime.UtcNow
+        };
+
+        await MinesweeperStatsService.AddRecordAsync(record);
     }
 
     private string GetFaceEmoji()

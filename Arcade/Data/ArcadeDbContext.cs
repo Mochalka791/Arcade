@@ -12,6 +12,7 @@ public class ArcadeDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<SnakeStats> SnakeStats => Set<SnakeStats>();
     public DbSet<TetrisStats> TetrisStats => Set<TetrisStats>();
+    public DbSet<MinesweeperStats> MinesweeperStats => Set<MinesweeperStats>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
