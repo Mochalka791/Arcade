@@ -1,29 +1,45 @@
-﻿using Arcade.Data.Entities;
+﻿using Arcade.Data;
+using Arcade.Data.Entities;
 using Microsoft.EntityFrameworkCore;
-using Arcade.Data;
 
 namespace Arcade.Data.Services;
-// DTO
+
 public class MinesweeperSummary
 {
     public int TotalGames { get; set; }
     public int Wins { get; set; }
     public int Losses => TotalGames - Wins;
 
-    public double BestTime { get; set; }
-    public double AverageTime { get; set; }
+    public double WinRatePercent => TotalGames == 0
+        ? 0
+        : (double)Wins / TotalGames * 100.0;
 
-    public double BestEfficiency { get; set; }
+    /// <summary>
+    /// Summe aller erspielten Punkte (abhängig von Difficulty).
+    /// </summary>
+    public int Points { get; set; }
 }
 
 public interface IMinesweeperStatsService
 {
+    /// <summary>
+    /// Speichert einen einzelnen Minesweeper-Run (Win oder Loss).
+    /// </summary>
     Task AddRecordAsync(MinesweeperStats record);
+
+    /// <summary>
+    /// Top 10 für eine bestimmte Difficulty, sortiert nach Zeit (nur Wins).
+    /// </summary>
     Task<List<MinesweeperStats>> GetTop10Async(string difficulty);
+
+    /// <summary>
+    /// Zusammenfassung für das Profil eines Users:
+    /// Spiele gesamt, Wins, Losses, Winrate, Punkte.
+    /// </summary>
     Task<MinesweeperSummary> GetUserSummaryAsync(string userId);
 }
 
-public class MinesweeperStatsService : IMinesweeperStatsService
+public sealed class MinesweeperStatsService : IMinesweeperStatsService
 {
     private readonly ArcadeDbContext _db;
 
@@ -53,22 +69,19 @@ public class MinesweeperStatsService : IMinesweeperStatsService
             .Where(x => x.UserId == userId)
             .ToListAsync();
 
-        if (!records.Any())
+        if (records.Count == 0)
         {
             return new MinesweeperSummary();
         }
 
-        var wins = records.Where(x => x.Won).ToList();
+        var wins = records.Count(x => x.Won);
+        var points = records.Sum(x => x.Points);
 
         return new MinesweeperSummary
         {
             TotalGames = records.Count,
-            Wins = wins.Count,
-
-            BestTime = wins.Any() ? wins.Min(x => x.TimeSeconds) : 0,
-
-            AverageTime = records.Average(x => x.TimeSeconds),
-            BestEfficiency = records.Max(x => x.EfficiencyPercent)
+            Wins = wins,
+            Points = points
         };
     }
 }
