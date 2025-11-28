@@ -2,11 +2,15 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @layout Arcade.Components.Layout.MainLayout
+@using Arcade.Data.Entities;
 @using System.Security.Claims
+@using Arcade.Data.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using Arcade.Data
 @using Arcade.Data.Entities
+
+@inject IMinesweeperStatsService StatsService
 
 @inject ArcadeDbContext Db
 @inject AuthenticationStateProvider AuthStateProvider
@@ -105,11 +109,39 @@
             </div>
 
             <div class="profil__score-card">
-                <div class="profil__score-game">Minesweeper</div>
-                <div class="profil__empty">
-                    
+                <div class="profil__score-game">💣 Minesweeper</div>
+
+                <div class="profil__score-stats">
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Beste Zeit</span>
+                        <span class="profil__score-value profil__score-value--highlight">
+                            @(_msBestTime?.ToString("0.0") ?? "–") Sec
+                        </span>
+                    </div>
+
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Spiele gespielt</span>
+                        <span class="profil__score-value">
+                            @_msTotalGames
+                        </span>
+                    </div>
+
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Winrate</span>
+                        <span class="profil__score-value">
+                            @(_msWinRate?.ToString("0.0") ?? "0")%
+                        </span>
+                    </div>
+
+                    <div class="profil__score-item">
+                        <span class="profil__score-label">Beste Effizienz</span>
+                        <span class="profil__score-value">
+                            @(_msBestEfficiency?.ToString("0") ?? "–")%
+                        </span>
+                    </div>
                 </div>
             </div>
+
 
             <div class="profil__score-card">
                 <div class="profil__score-game">🎮 Spiel 4</div>
@@ -155,11 +187,18 @@
     private int? _tetrisGamesPlayed;
     private int? _tetrisMaxLevel;
 
+   
+    private int _msTotalGames;
+    private double? _msBestTime;
+    private double? _msWinRate;
+    private double? _msBestEfficiency;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadUserInfoAsync();
         await LoadSnakeStatsAsync();
         await LoadTetrisStatsAsync();
+        await LoadMinesweeperStatsAsync();
     }
 
     private async Task LoadUserInfoAsync()
@@ -235,6 +274,32 @@
             _tetrisMaxLevel = stats.MaxLevel;
         }
     }
+
+    private async Task LoadMinesweeperStatsAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+            return;
+
+        var userId = user.FindFirst("sub")?.Value ??
+                     user.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
+                     user.Identity!.Name;
+
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        var summary = await StatsService.GetUserSummaryAsync(userId);
+
+        _msTotalGames = summary.TotalGames;
+        _msBestTime = summary.BestTime > 0 ? summary.BestTime : null;
+        _msWinRate = summary.TotalGames > 0
+            ? (summary.Wins * 100.0 / summary.TotalGames)
+            : null;
+        _msBestEfficiency = summary.BestEfficiency;
+    }
+
 
     private async Task<int?> ResolveUserIdAsync(ClaimsPrincipal principal)
     {
