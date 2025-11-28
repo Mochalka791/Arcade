@@ -267,6 +267,49 @@
         _difficulty = diff;
         StartNewGame();
     }
+    private (int x, int y) FindCellCoordinates(Cell cell)
+    {
+        if (_engine is null)
+        {
+            return (-1, -1);
+        }
+
+        for (var y = 0; y < _engine.Height; y++)
+        {
+            for (var x = 0; x < _engine.Width; x++)
+            {
+                if (ReferenceEquals(_engine.Grid[x, y], cell))
+                {
+                    return (x, y);
+                }
+            }
+        }
+
+        return (-1, -1);
+    }
+    private void EnsureFirstClickIsSafe(int x, int y)
+    {
+        if (_engine is null)
+        {
+            return;
+        }
+
+        if (!_engine.Grid[x, y].IsMine)
+        {
+            return;
+        }
+
+        const int maxAttempts = 64;
+        var attempts = 0;
+
+        do
+        {
+            CreateEngine();
+            attempts++;
+        }
+        while (_engine.Grid[x, y].IsMine && attempts < maxAttempts);
+    }
+
 
     private async Task HandleMouseDown(MouseEventArgs e, Cell cell)
     {
@@ -279,22 +322,31 @@
         {
             return;
         }
-
-        if (_state == GameState.Ready)
+        var (cx, cy) = FindCellCoordinates(cell);
+        if (cx < 0 || cy < 0)
         {
+            return;
+        }
+
+        if (_state == GameState.Ready && e.Button == 0)
+        {
+            EnsureFirstClickIsSafe(cx, cy);
+
             _state = GameState.Playing;
             _stopwatch.Start();
         }
 
+        var targetCell = _engine.Grid[cx, cy];
+
         if (e.Button == 0)
         {
             _clicksTotal++;
-            _engine.Reveal(cell);
+            _engine.Reveal(targetCell);
         }
         else if (e.Button == 2)
         {
             _clicksTotal++;
-            _engine.ToggleFlag(cell);
+            _engine.ToggleFlag(targetCell);
         }
 
         if (_engine.IsGameOver)
