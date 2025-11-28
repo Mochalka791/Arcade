@@ -11,7 +11,6 @@
 @using Arcade.Data.Entities
 @using System.Security.Claims
 
-
 @inject IMinesweeperStatsService MinesweeperStatsService
 @inject AuthenticationStateProvider AuthStateProvider
 @implements IAsyncDisposable
@@ -239,6 +238,7 @@
     {
         CreateEngine();
         _stopwatch.Reset();
+
         if (_timer is null)
         {
             _timer = new System.Timers.Timer(100);
@@ -267,6 +267,7 @@
         _difficulty = diff;
         StartNewGame();
     }
+
     private (int x, int y) FindCellCoordinates(Cell cell)
     {
         if (_engine is null)
@@ -287,6 +288,7 @@
 
         return (-1, -1);
     }
+
     private void EnsureFirstClickIsSafe(int x, int y)
     {
         if (_engine is null)
@@ -310,7 +312,6 @@
         while (_engine.Grid[x, y].IsMine && attempts < maxAttempts);
     }
 
-
     private async Task HandleMouseDown(MouseEventArgs e, Cell cell)
     {
         if (_engine is null)
@@ -322,6 +323,7 @@
         {
             return;
         }
+
         var (cx, cy) = FindCellCoordinates(cell);
         if (cx < 0 || cy < 0)
         {
@@ -355,10 +357,7 @@
             _stopwatch.Stop();
             _timer?.Stop();
 
-            if (_engine.IsWin)
-            {
-                await SaveStatsAsync();
-            }
+            await SaveStatsAsync(_engine.IsWin);
         }
     }
 
@@ -380,10 +379,10 @@
         _stopwatch.Stop();
         _timer?.Stop();
 
-        await SaveStatsAsync();
+        await SaveStatsAsync(true);
     }
 
-    private async Task SaveStatsAsync()
+    private async Task SaveStatsAsync(bool won)
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = auth.User;
@@ -397,6 +396,8 @@
                      ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
                      ?? user.Identity!.Name!;
 
+        var points = MinesweeperStatsEngine.CalculatePoints(_difficulty.ToString(), won);
+
         var record = new MinesweeperStats
         {
             UserId = userId,
@@ -406,7 +407,8 @@
             ThreeBVPerSecond = ThreeBVPerSecond,
             Clicks = _clicksTotal,
             EfficiencyPercent = EfficiencyPercent,
-            Won = true,
+            Won = won,
+            Points = points,
             PlayedAt = DateTime.UtcNow
         };
 

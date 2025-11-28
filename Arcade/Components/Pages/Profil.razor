@@ -11,9 +11,9 @@
 @using Arcade.Data.Entities
 
 @inject IMinesweeperStatsService StatsService
-
 @inject ArcadeDbContext Db
 @inject AuthenticationStateProvider AuthStateProvider
+
 <div class="profil">
     <div class="profil__header">
         <p class="profil__greeting">Hi <span class="profil__username">@UserName</span> 👋</p>
@@ -108,40 +108,42 @@
                 </div>
             </div>
 
+            <!-- Minesweeper -->
             <div class="profil__score-card">
                 <div class="profil__score-game">💣 Minesweeper</div>
 
-                <div class="profil__score-stats">
-                    <div class="profil__score-item">
-                        <span class="profil__score-label">Beste Zeit</span>
-                        <span class="profil__score-value profil__score-value--highlight">
-                            @(_msBestTime?.ToString("0.0") ?? "–") Sec
-                        </span>
+                @if (_msTotalGames == 0)
+                {
+                    <div class="profil__empty">
+                        Noch keine Spiele gespielt
                     </div>
+                }
+                else
+                {
+                    <div class="profil__score-stats">
+                        <div class="profil__score-item">
+                            <span class="profil__score-label">Spiele gespielt</span>
+                            <span class="profil__score-value">
+                                @_msTotalGames
+                            </span>
+                        </div>
 
-                    <div class="profil__score-item">
-                        <span class="profil__score-label">Spiele gespielt</span>
-                        <span class="profil__score-value">
-                            @_msTotalGames
-                        </span>
-                    </div>
+                        <div class="profil__score-item">
+                            <span class="profil__score-label">Winrate</span>
+                            <span class="profil__score-value">
+                                @(_msWinRate.HasValue? _msWinRate.Value.ToString("0.0") : "0")%
+                            </span>
+                        </div>
 
-                    <div class="profil__score-item">
-                        <span class="profil__score-label">Winrate</span>
-                        <span class="profil__score-value">
-                            @(_msWinRate?.ToString("0.0") ?? "0")%
-                        </span>
+                        <div class="profil__score-item">
+                            <span class="profil__score-label">Punkte (Elo)</span>
+                            <span class="profil__score-value profil__score-value--highlight">
+                                @_msPoints
+                            </span>
+                        </div>
                     </div>
-
-                    <div class="profil__score-item">
-                        <span class="profil__score-label">Beste Effizienz</span>
-                        <span class="profil__score-value">
-                            @(_msBestEfficiency?.ToString("0") ?? "–")%
-                        </span>
-                    </div>
-                </div>
+                }
             </div>
-
 
             <div class="profil__score-card">
                 <div class="profil__score-game">🎮 Spiel 4</div>
@@ -187,11 +189,10 @@
     private int? _tetrisGamesPlayed;
     private int? _tetrisMaxLevel;
 
-   
+    // Minesweeper: neue Struktur
     private int _msTotalGames;
-    private double? _msBestTime;
     private double? _msWinRate;
-    private double? _msBestEfficiency;
+    private int _msPoints;
 
     protected override async Task OnInitializedAsync()
     {
@@ -293,13 +294,11 @@
         var summary = await StatsService.GetUserSummaryAsync(userId);
 
         _msTotalGames = summary.TotalGames;
-        _msBestTime = summary.BestTime > 0 ? summary.BestTime : null;
+        _msPoints = summary.Points;
         _msWinRate = summary.TotalGames > 0
-            ? (summary.Wins * 100.0 / summary.TotalGames)
+            ? summary.WinRatePercent
             : null;
-        _msBestEfficiency = summary.BestEfficiency;
     }
-
 
     private async Task<int?> ResolveUserIdAsync(ClaimsPrincipal principal)
     {

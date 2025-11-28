@@ -1,23 +1,35 @@
-﻿public static class MinesweeperStatsEngine
+﻿namespace Arcade.Games.Minesweeper;
+
+public static class MinesweeperStatsEngine
 {
-    public static int Calculate3BV(MinesweeperEngine e)
-        => e.RevealedSafeCells;
+    public static int Calculate3BV(MinesweeperEngine engine)
+        => engine.RevealedSafeCells;
 
     public static double Calculate3BVPerSecond(int threeBV, double seconds)
-        => seconds > 0 ? threeBV / seconds : 0;
+        => seconds > 0.0
+            ? threeBV / seconds
+            : 0.0;
 
     public static double CalculateEfficiency(int threeBV, int clicks)
-        => clicks > 0 ? (threeBV / (double)clicks) * 100.0 : 0;
+        => clicks > 0
+            ? (threeBV / (double)clicks) * 100.0
+            : 0.0;
 
-    //public static string GetRank(bool win)
-    //    => win ? "Rookie" : "Unranked";
+    public static int CalculatePoints(string difficulty, bool won)
+    {
+        if (!won)
+        {
+            return 0;
+        }
 
-    //public static int GetXP(bool win)
-    //    => win ? 12 : 0;
+        var rng = Random.Shared;
 
-    //public static int GetCoins(bool win)
-    //    => win ? 1 : 0;
-
-    //public static int GetTrophies(bool win)
-    //    => win ? 8 : 0;
+        return difficulty switch
+        {
+            "Beginner" => rng.Next(1, 4),  
+            "Intermediate" => rng.Next(3, 8),   
+            "Expert" => rng.Next(7, 16),  
+            _ => 0
+        };
+    }
 }

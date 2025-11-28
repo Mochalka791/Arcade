@@ -30,12 +30,10 @@
         IsWin = false;
         RevealedSafeCells = 0;
 
-        // Grid leeren
         for (int x = 0; x < Width; x++)
             for (int y = 0; y < Height; y++)
                 Grid[x, y] = new Cell(x, y);
 
-        // Minen setzen
         int placed = 0;
         while (placed < Mines)
         {
