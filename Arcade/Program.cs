@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Arcade.Data.Services;
+using Arcade.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,7 @@ builder.Services.AddDbContext<ArcadeDbContext>(options =>
 builder.Services.AddScoped<ITetrisStatsService, TetrisStatsService>();
 builder.Services.AddScoped<ISnakeStatsService, SnakeStatsService>();
 builder.Services.AddScoped<IMinesweeperStatsService, MinesweeperStatsService>();
+builder.Services.AddSingleton<SlitherGameService>();
 
 builder.Services.AddHttpContextAccessor();
 // PasswordHasher

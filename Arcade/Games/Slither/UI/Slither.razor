@@ -1,0 +1,168 @@
+﻿@page "/slither"
+
+@using Arcade.Games.Slither.Models
+@using Arcade.Games.Slither.Engine
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web
+
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="slither-root">
+    <canvas @ref="_canvas"
+            class="slither-canvas"
+            @onmousemove="OnMouseMove"
+            width="1920"
+            height="1080">
+    </canvas>
+
+    <div class="slither-hud">
+        <div>Länge: @_score</div>
+        @if (!_isAlive)
+        {
+            <div style="margin-top: 8px; color: #ff6b6b;">Game Over!</div>
+        }
+    </div>
+
+    @if (!_isAlive)
+    {
+        <div class="slither-gameover">
+            <h1>Game Over!</h1>
+            <p>Finale Länge: @_score</p>
+            <button @onclick="Restart" class="slither-restart-btn">
+                Nochmal spielen
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _canvas;
+    private SlitherWorld? _world;
+    private bool _isAlive = true;
+    private int _score = 0;
+    private Vec2 _mouseWorldPos = new(0, 0);
+    private System.Threading.Timer? _gameTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeGame();
+        }
+    }
+
+    private async Task InitializeGame()
+    {
+        _world = new SlitherWorld();
+        _world.Initialize(botCount: 15, foodCount: 500);
+        _isAlive = true;
+        _score = _world.Player.Segments.Count;
+
+        // JS-Canvas initialisieren
+        await JS.InvokeVoidAsync("slitherGame.init", _canvas);
+
+        // HUD einmal aktualisieren
+        await InvokeAsync(StateHasChanged);
+
+        // Game Loop starten (Timer-Thread -> später auf UI kontext marshallen)
+        _gameTimer = new System.Threading.Timer(async _ => await GameLoop(),
+            null, 0, 16); // ~60 FPS
+    }
+
+    private async Task GameLoop()
+    {
+        if (_world == null) return;
+
+        float dt = 0.016f;
+
+        var player = _world.Player;
+        var inputDir = _mouseWorldPos - player.HeadPos;
+
+        _world.Update(dt, inputDir);
+
+        _score = player.Segments.Count;
+
+        if (player.IsDead && _isAlive)
+        {
+            _isAlive = false;
+            _gameTimer?.Dispose();
+
+            // HUD-Update auf UI-Thread
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // JS-Render + HUD-Update IMMER über Blazor-SyncContext
+        await InvokeAsync(async () =>
+        {
+            await RenderGame();
+            StateHasChanged();
+        });
+    }
+
+    private async Task RenderGame()
+    {
+        if (_world == null) return;
+
+        var player = _world.Player;
+
+        var camX = player.HeadPos.X - 960;
+        var camY = player.HeadPos.Y - 540;
+
+        var renderData = new
+        {
+            camX,
+            camY,
+            snakes = _world.Snakes.Where(s => !s.IsDead).Select(s => new
+            {
+                name = s.Name,
+                color = s.Color,
+                headX = s.HeadPos.X,
+                headY = s.HeadPos.Y,
+                dirX = s.Direction.X,
+                dirY = s.Direction.Y,
+                radius = s.Radius,
+                segments = s.Segments.Select(seg => new { x = seg.X, y = seg.Y }).ToArray(),
+                isPlayer = s.Type == SnakeType.Player
+            }).ToArray(),
+            food = _world.Food.Select(f => new
+            {
+                x = f.Pos.X,
+                y = f.Pos.Y,
+                color = f.Color,
+                radius = f.Value > 5 ? 8f : 5f
+            }).ToArray(),
+            worldWidth = _world.Width,
+            worldHeight = _world.Height
+        };
+
+        await JS.InvokeVoidAsync("slitherGame.render", renderData);
+    }
+
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (_world == null) return;
+
+        var player = _world.Player;
+
+        var camX = player.HeadPos.X - 960;
+        var camY = player.HeadPos.Y - 540;
+
+        _mouseWorldPos = new Vec2(
+            (float)e.OffsetX + camX,
+            (float)e.OffsetY + camY
+        );
+    }
+
+    private async Task Restart()
+    {
+        _gameTimer?.Dispose();
+        await InitializeGame();
+    }
+
+    public void Dispose()
+    {
+        _gameTimer?.Dispose();
+    }
+}
