@@ -104,10 +104,18 @@ class Game {
         this.startTime = 0;
         this.kills = 0;
 
-        // FPS-Messung
+        // FPS
         this._fps = 0;
         this._fpsLast = performance.now();
         this._fpsFrames = 0;
+
+        // Throttling
+        this._lastLeaderboard = 0;
+        this._lastMinimap = 0;
+
+        // Minimap-Canvas
+        this._minimapCanvas = null;
+        this._minimapCtx = null;
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -116,6 +124,9 @@ class Game {
     resize() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        // Minimap neu dimensionieren beim Resize
+        this._minimapCanvas = null;
+        this._minimapCtx = null;
     }
 
     init(playerName) {
@@ -124,11 +135,9 @@ class Game {
         this.kills = 0;
         this.startTime = Date.now();
 
-        // Spieler
         this.player = new Snake(playerName, true);
         this.snakes.push(this.player);
 
-        // Bots
         const botNames = [
             'Bot Alpha', 'Bot Beta', 'Bot Gamma', 'Bot Delta', 'Bot Epsilon',
             'Bot Zeta', 'Bot Eta', 'Bot Theta', 'Bot Iota', 'Bot Kappa',
@@ -138,7 +147,6 @@ class Game {
             this.snakes.push(new Snake(botNames[i % botNames.length] + ' ' + (i + 1)));
         }
 
-        // Food
         for (let i = 0; i < 800; i++) {
             this.spawnFood();
         }
@@ -155,54 +163,44 @@ class Game {
     update(dt) {
         if (!this.player || this.player.isDead) return;
 
-        // Spieler
         this.updatePlayer(this.player, dt);
 
-        // Bots
         this.snakes.filter(s => !s.isPlayer && !s.isDead).forEach(bot => {
             this.updateBot(bot, dt);
         });
 
-        // Bewegung
         this.snakes.filter(s => !s.isDead).forEach(s => {
             this.moveSnake(s, dt);
         });
 
-        // Kollisionen
         this.handleFoodCollisions();
         this.handleSnakeCollisions();
 
-        // Tote aufräumen
         this.snakes = this.snakes.filter(s => !s.isDead || s.segments.length > 0);
 
-        // Kamera
         this.camera.x = this.player.headPos.x - this.canvas.width / 2;
         this.camera.y = this.player.headPos.y - this.canvas.height / 2;
 
-        // HUD
         document.getElementById('score').textContent = 'Länge: ' + this.player.length;
         document.getElementById('kills').textContent = 'Kills: ' + this.kills;
         this.updateLeaderboard();
     }
 
-    // ========= Player-Controller (snappier) =========
+    // ========= Player-Controller =========
     updatePlayer(snake, dt) {
         const toMouse = this.mousePos.sub(snake.headPos);
         const targetDir = toMouse.normalized();
         const dist = toMouse.length;
 
-        // schnelleres Einlenken
         const lerp = 1 - Math.exp(-PLAYER_TURN_RATE * dt);
         snake.direction = new Vec2(
             snake.direction.x + (targetDir.x - snake.direction.x) * lerp,
             snake.direction.y + (targetDir.y - snake.direction.y) * lerp
         ).normalized();
 
-        // Basis-Speed abhängig von Distanz zur Maus
         const speedFactor = 0.7 + Math.min(dist / 800, 0.8); // 0.7 .. 1.5
         let targetSpeed = snake.baseSpeed * speedFactor;
 
-        // Boost
         if (this.keys[' '] && snake.length > 25) {
             targetSpeed *= PLAYER_BOOST_MULTIPLIER;
             snake.isBoosting = true;
@@ -215,17 +213,16 @@ class Game {
             snake.isBoosting = false;
         }
 
-        // Speed smooth interpolieren
         const speedLerp = 1 - Math.exp(-6 * dt);
         snake.speed = snake.speed + (targetSpeed - snake.speed) * speedLerp;
     }
 
-    // ========= smarte Bots =========
+    // ========= Bots =========
     updateBot(snake, dt) {
         let target = null;
         let minDist = 600;
 
-        // 1) großes Food
+        // fettes Food prio
         this.food.forEach(f => {
             if (f.value < 3) return;
             const dist = f.pos.sub(snake.headPos).length;
@@ -235,7 +232,7 @@ class Game {
             }
         });
 
-        // 2) sonst normales Food
+        // sonst normales Food
         if (!target) {
             this.food.forEach(f => {
                 const dist = f.pos.sub(snake.headPos).length;
@@ -246,14 +243,14 @@ class Game {
             });
         }
 
-        // 3) größeren Schlangen ausweichen
+        // größeren Schlangen ausweichen
         this.snakes.forEach(other => {
             if (other.id === snake.id || other.isDead) return;
             if (other.length > snake.length * 1.2) {
                 const offset = other.headPos.sub(snake.headPos);
                 const dist = offset.length;
                 if (dist < 220) {
-                    target = snake.headPos.sub(offset); // Flucht
+                    target = snake.headPos.sub(offset);
                     snake.speed = snake.baseSpeed * 1.6;
                 }
             }
@@ -268,7 +265,6 @@ class Game {
             ).normalized();
         }
 
-        // leichte Zufallsbewegung
         if (Math.random() < 0.015) {
             const angle = (Math.random() - 0.5) * 0.6;
             const cos = Math.cos(angle);
@@ -283,7 +279,6 @@ class Game {
     moveSnake(snake, dt) {
         const newHead = snake.headPos.add(snake.direction.mul(snake.speed * dt));
 
-        // Wrap Around
         newHead.x = (newHead.x + WORLD_WIDTH) % WORLD_WIDTH;
         newHead.y = (newHead.y + WORLD_HEIGHT) % WORLD_HEIGHT;
 
@@ -367,6 +362,12 @@ class Game {
     }
 
     updateLeaderboard() {
+        const now = performance.now();
+        if (now - this._lastLeaderboard < 200) {
+            return;
+        }
+        this._lastLeaderboard = now;
+
         const sorted = [...this.snakes]
             .filter(s => !s.isDead)
             .sort((a, b) => b.length - a.length)
@@ -419,19 +420,23 @@ class Game {
             ctx.stroke();
         }
 
-        // Food
         this.food.forEach(f => {
             f.glow = (f.glow + 0.1) % (Math.PI * 2);
             const glowSize = f.radius + Math.sin(f.glow) * 2;
 
+            if (f.value > 5) {
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = f.color;
+            } else {
+                ctx.shadowBlur = 0;
+            }
+
             ctx.fillStyle = f.color;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = f.color;
             ctx.beginPath();
             ctx.arc(f.pos.x, f.pos.y, glowSize, 0, Math.PI * 2);
             ctx.fill();
-            ctx.shadowBlur = 0;
         });
+        ctx.shadowBlur = 0;
 
         // Schlangen
         const sorted = [...this.snakes].filter(s => !s.isDead).sort((a, b) => a.length - b.length);
@@ -443,7 +448,7 @@ class Game {
             ctx.lineJoin = 'round';
 
             if (snake.isBoosting) {
-                ctx.shadowBlur = 20;
+                ctx.shadowBlur = 18;
                 ctx.shadowColor = snake.color;
             }
 
@@ -504,10 +509,10 @@ class Game {
 
         ctx.restore();
 
-        // Minimap
+        // Minimap (optimiert)
         this.renderMinimap();
 
-        // FPS anzeigen (oben links)
+        // FPS messen
         const now = performance.now();
         this._fpsFrames++;
         if (now - this._fpsLast >= 1000) {
@@ -524,36 +529,72 @@ class Game {
         ctx.restore();
     }
 
+    // Minimap mit eigenem Canvas, ~6–7 FPS
     renderMinimap() {
-        const minimap = document.getElementById('minimap');
-        const rect = minimap.getBoundingClientRect();
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = rect.width;
-        tmpCanvas.height = rect.height;
-        const ctx = tmpCanvas.getContext('2d');
+        const now = performance.now();
+        if (now - this._lastMinimap < 150) {
+            return;
+        }
+        this._lastMinimap = now;
 
-        const scale = rect.width / WORLD_WIDTH;
+        const container = document.getElementById('minimap');
+        if (!container) return;
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, 0, rect.width, rect.height);
+        if (!this._minimapCanvas) {
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
 
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            container.innerHTML = '';
+            container.appendChild(canvas);
+
+            this._minimapCanvas = canvas;
+            this._minimapCtx = canvas.getContext('2d');
+        }
+
+        const ctx = this._minimapCtx;
+        const dpr = window.devicePixelRatio || 1;
+        const w = this._minimapCanvas.width;
+        const h = this._minimapCanvas.height;
+
+        const scaleX = w / WORLD_WIDTH;
+        const scaleY = h / WORLD_HEIGHT;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(0, 0, w, h);
+
+        // Schlangen
         this.snakes.filter(s => !s.isDead).forEach(snake => {
-            ctx.fillStyle = snake.isPlayer ? '#5cf0c8' : '#fff';
+            ctx.fillStyle = snake.isPlayer ? '#5cf0c8' : '#ffffff';
             ctx.beginPath();
             ctx.arc(
-                snake.headPos.x * scale,
-                snake.headPos.y * scale,
-                snake.isPlayer ? 4 : 2,
+                snake.headPos.x * scaleX,
+                snake.headPos.y * scaleY,
+                (snake.isPlayer ? 4 : 2) * dpr,
                 0, Math.PI * 2
             );
             ctx.fill();
         });
 
-        minimap.style.backgroundImage = `url(${tmpCanvas.toDataURL()})`;
-        minimap.style.backgroundSize = 'cover';
+        // Viewport-Rechteck
+        if (this.player) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1 * dpr;
+            const vw = this.canvas.width * scaleX;
+            const vh = this.canvas.height * scaleY;
+            const vx = this.camera.x * scaleX;
+            const vy = this.camera.y * scaleY;
+            ctx.strokeRect(vx, vy, vw, vh);
+        }
     }
 
-    // 60-FPS Fixed-Timestep Loop
+    // 60-FPS Fixed-Timestep
     start() {
         const STEP = 1 / 60;
         let last = performance.now();
