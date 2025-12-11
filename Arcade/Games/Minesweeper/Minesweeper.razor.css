@@ -1,119 +1,136 @@
 ﻿.minesweeper-page {
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 1.5rem 1rem 3rem;
-    color: #e3ecff;
+    padding: 2rem 1.5rem 4rem;
+    color: #f5f5f7;
 }
 
 .minesweeper-header {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 1.25rem;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
 }
 
 .minesweeper-title {
-    font-size: clamp(1.8rem, 4vw, 2.4rem);
-    font-weight: 700;
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    font-weight: 600;
     margin: 0;
-    background: linear-gradient(120deg,#5cf0c8,#2f8bff);
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    text-align: center;
 }
 
 .minesweeper-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1rem;
+    gap: 1.5rem;
     flex-wrap: wrap;
 }
 
 .ms-difficulty {
     display: flex;
     gap: 0.5rem;
-    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .ms-diff-btn {
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(15,20,30,0.85);
-    border-radius: 999px;
-    padding: 0.35rem 0.85rem;
-    font-size: 0.9rem;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
     cursor: pointer;
-    color: #dfe7ff;
-    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    color: rgba(255, 255, 255, 0.75);
+    transition: all 0.2s ease;
+    will-change: transform;
 }
 
     .ms-diff-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 0 12px rgba(86,204,242,0.4);
+        color: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.08);
     }
 
 .ms-diff-btn--active {
-    background: linear-gradient(120deg,#2f80ed,#56ccf2);
-    color: #0a0c12;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .ms-hud {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .ms-counter {
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 70px;
-    padding: 0.25rem 0.5rem;
-    border-radius: 10px;
-    background: radial-gradient(circle at top,rgba(255,255,255,0.05),rgba(0,0,0,0.7));
-    border: 1px solid rgba(255,255,255,0.12);
+    min-width: 60px;
+    gap: 0.125rem;
 }
 
     .ms-counter .label {
-        font-size: 0.7rem;
-        opacity: 0.7;
+        font-size: 0.625rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.6;
     }
 
     .ms-counter .value {
-        font-family: "Consolas","SF Mono",monospace;
-        font-size: 1.2rem;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
     }
 
 .ms-face {
-    width: 48px;
-    height: 48px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.18);
-    background: radial-gradient(circle at 30% 0%,rgba(255,255,255,0.12),rgba(8,10,18,0.95));
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.6rem;
+    font-size: 1.5rem;
     cursor: pointer;
-    box-shadow: 0 0 12px rgba(0,0,0,0.55);
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    transition: transform 0.2s ease;
+    will-change: transform;
 }
 
     .ms-face:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 0 18px rgba(92,240,200,0.45);
+        transform: scale(1.05);
     }
 
-/* Main layout */
+    .ms-face:active {
+        transform: scale(0.95);
+    }
 
+/* Main Layout */
 .minesweeper-main {
     display: grid;
-    grid-template-columns: minmax(0,1fr) 280px;
-    gap: 1.25rem;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 2rem;
+    align-items: start;
 }
 
 @media (max-width: 900px) {
     .minesweeper-main {
-        grid-template-columns: minmax(0,1fr);
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -123,177 +140,223 @@
 }
 
 .ms-board {
-    --cell-size: 28px;
+    --cell-size: 32px;
     display: grid;
     grid-template-columns: repeat(var(--cols), var(--cell-size));
     grid-template-rows: repeat(var(--rows), var(--cell-size));
-    background: radial-gradient(circle at top,rgba(255,255,255,0.04),rgba(0,0,0,0.85));
-    border-radius: 14px;
-    padding: 8px;
-    box-shadow: 0 0 24px rgba(0,0,0,0.7);
-    border: 1px solid rgba(255,255,255,0.12);
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    padding: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    will-change: contents;
+    contain: layout style paint;
 }
 
 .ms-empty {
-    padding: 2rem;
-    opacity: 0.8;
+    padding: 3rem;
+    opacity: 0.6;
+    font-weight: 500;
 }
-
-/* Cells */
 
 .ms-cell {
     width: var(--cell-size);
     height: var(--cell-size);
-    border: 1px solid rgba(255,255,255,0.08);
-    background: linear-gradient(145deg,#202634,#131722);
-    border-radius: 6px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
     cursor: pointer;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: "Consolas","SF Mono",monospace;
-    font-size: 0.95rem;
-    color: #e2ebff;
-    transition: background 0.1s ease, transform 0.06s ease, box-shadow 0.1s ease;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f5f5f7;
+    transition: transform 0.15s ease, background 0.15s ease;
+    will-change: transform;
+    contain: layout style paint;
 }
 
-    .ms-cell:hover {
+    .ms-cell:hover:not(.ms-cell--revealed) {
         transform: translateY(-1px);
-        box-shadow: 0 0 10px rgba(86,204,242,0.35);
+        background: rgba(255, 255, 255, 0.15);
+    }
+
+    .ms-cell:active:not(.ms-cell--revealed) {
+        transform: scale(0.95);
     }
 
 .ms-cell--revealed {
-    background: radial-gradient(circle at top,rgba(255,255,255,0.04),rgba(10,14,20,0.95));
-    box-shadow: inset 0 0 8px rgba(0,0,0,0.8);
+    background: rgba(0, 0, 0, 0.2);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
     cursor: default;
+    transform: none;
 }
 
 .ms-cell--mine.ms-cell--revealed {
-    background: radial-gradient(circle at center,rgba(255,0,91,0.85),rgba(30,4,10,0.95));
-    animation: ms-explosion 0.25s ease-out;
+    background: linear-gradient(135deg, rgba(255, 59, 48, 0.3), rgba(255, 45, 85, 0.3));
+    animation: ms-explosion 0.3s ease-out;
 }
 
 .ms-cell--flagged {
-    background: linear-gradient(145deg,#2b3044,#181b28);
+    background: linear-gradient(135deg, rgba(10, 132, 255, 0.2), rgba(48, 209, 88, 0.2));
 }
 
-/* Zahlenfarben wie klassisches Minesweeper */
-
-.ms-num-1 {
-    color: #3b7cff;
-}
-
-.ms-num-2 {
-    color: #2ecc71;
-}
-
-.ms-num-3 {
-    color: #e74c3c;
-}
-
-.ms-num-4 {
-    color: #2c3e50;
-}
-
-.ms-num-5 {
-    color: #b27b16;
-}
-
-.ms-num-6 {
-    color: #1abc9c;
-}
-
-.ms-num-7 {
-    color: #000000;
-}
-
-.ms-num-8 {
-    color: #7f8c8d;
-}
+.ms-num-1 { color: #0A84FF; }
+.ms-num-2 { color: #30D158; }
+.ms-num-3 { color: #FF453A; }
+.ms-num-4 { color: #BF5AF2; }
+.ms-num-5 { color: #FF9F0A; }
+.ms-num-6 { color: #5AC8FA; }
+.ms-num-7 { color: #FFD60A; }
+.ms-num-8 { color: #FF375F; }
 
 @keyframes ms-explosion {
-    from {
-        transform: scale(0.7);
+    0% {
+        transform: scale(0.9);
+        opacity: 0.5;
     }
-
-    to {
+    100% {
         transform: scale(1);
+        opacity: 1;
     }
 }
-
-/* Result Panel */
-
-.ms-results-panel {
-    background: rgba(14,16,26,0.9);
-    border-radius: 14px;
-    padding: 1.1rem 1rem 1rem;
-    border: 1px solid rgba(255,255,255,0.12);
-    box-shadow: 0 0 20px rgba(0,0,0,0.75);
-    backdrop-filter: blur(12px);
+.minesweeper-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 16rem;
+    align-items: start;
+    justify-content: center;
 }
-
+.ms-results-panel {
+    max-width: 280px;
+    margin-left: 1.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
 .ms-results-title {
-    margin: 0 0 0.4rem;
-    font-size: 1.1rem;
+    margin: 0 0 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
 .ms-rank-line {
-    margin: 0 0 0.4rem;
-    font-size: 0.95rem;
-    opacity: 0.85;
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+    opacity: 0.7;
 }
 
 .ms-win-text,
 .ms-lose-text,
 .ms-info-text {
-    margin: 0 0 0.8rem;
-    font-size: 0.9rem;
-    opacity: 0.9;
+    margin: 0 0 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    opacity: 0.85;
 }
 
 .ms-stats {
     list-style: none;
     padding: 0;
-    margin: 0 0 0.8rem;
-    font-size: 0.9rem;
+    margin: 0 0 1.5rem;
+    font-size: 0.875rem;
 }
 
     .ms-stats li {
         display: flex;
         justify-content: space-between;
-        padding: 0.18rem 0;
-        border-bottom: 1px dashed rgba(255,255,255,0.08);
+        padding: 0.75rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
+        .ms-stats li:last-child {
+            border-bottom: none;
+        }
+
         .ms-stats li span:first-child {
-            opacity: 0.75;
+            opacity: 0.6;
+            font-weight: 500;
+        }
+
+        .ms-stats li span:last-child {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
         }
 
 .ms-rewards {
-    font-size: 0.9rem;
-    margin-bottom: 0.9rem;
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
 }
 
     .ms-rewards p {
-        margin: 0.08rem 0;
+        margin: 0.5rem 0;
     }
 
 .ms-newgame-btn {
     width: 100%;
-    border-radius: 999px;
-    padding: 0.45rem 0.75rem;
+    border-radius: 12px;
+    padding: 0.875rem 1rem;
     border: none;
     cursor: pointer;
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 600;
-    background: linear-gradient(120deg,#5cf0c8,#2f8bff);
-    color: #050712;
-    box-shadow: 0 0 16px rgba(92,240,200,0.45);
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    will-change: transform;
 }
 
     .ms-newgame-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 0 22px rgba(92,240,200,0.7);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
     }
+
+    .ms-newgame-btn:active {
+        transform: translateY(0);
+    }
+
+.ms-dev-btn {
+    opacity: 0.3;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+    .ms-dev-btn:hover {
+        opacity: 0.6;
+    }
+
+@media (max-width: 600px) {
+    .minesweeper-page {
+        padding: 1rem 0.75rem 2rem;
+    }
+
+    .ms-board {
+        --cell-size: 28px;
+    }
+
+    .minesweeper-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ms-difficulty {
+        justify-content: center;
+    }
+
+    .ms-hud {
+        justify-content: center;
+    }
+}
