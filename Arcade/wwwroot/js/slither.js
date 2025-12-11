@@ -1,379 +1,560 @@
-﻿console.log("slither.js loaded");
+﻿console.log("🐍 Slither.io Clone loaded");
 
-// ========== Konstanten ==========
-const WORLD_WIDTH = 4000;
-const WORLD_HEIGHT = 4000;
-const GRID_SIZE = 100;
+// ========== CONFIG ==========
+const CONFIG = {
+    WORLD_SIZE: 5000,
+    GRID_SIZE: 50,
+    PLAYER_SPEED: 200,
+    BOT_SPEED: 180,
+    BOOST_MULTI: 2.5,
+    TURN_SPEED: 5.5,
+    MAX_TURN_ANGLE: 2.5, // Maximaler Abbiegewinkel pro Frame (in Radiant)
+    SEGMENT_SIZE: 10,
+    HEAD_SIZE: 18,
+    FOOD_COUNT: 2000,
+    BOT_COUNT: 30,
+    BOT_AGGRESSION: 0.4 // Wahrscheinlichkeit für aggressives Verhalten
+};
 
-// Speed / Steering
-const PLAYER_BASE_SPEED = 260;
-const PLAYER_BOOST_MULTIPLIER = 2.3;
-const BOT_BASE_SPEED = 230;
-const PLAYER_TURN_RATE = 10; // je höher, desto snappier
-const BOT_TURN_RATE = 6;
-
-// ========== Vektor-Klasse ==========
+// ========== VEC2 ==========
 class Vec2 {
     constructor(x = 0, y = 0) {
         this.x = x;
         this.y = y;
     }
 
-    get length() {
-        return Math.sqrt(this.x * this.x + this.y * this.y);
-    }
-
-    normalized() {
-        const len = this.length;
-        return len > 0 ? new Vec2(this.x / len, this.y / len) : new Vec2(0, 0);
-    }
-
     add(v) { return new Vec2(this.x + v.x, this.y + v.y); }
     sub(v) { return new Vec2(this.x - v.x, this.y - v.y); }
-    mul(s) { return new Vec2(this.x * s, this.y * s); }
+    mul(n) { return new Vec2(this.x * n, this.y * n); }
+
+    get len() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+    norm() {
+        const l = this.len;
+        return l > 0 ? new Vec2(this.x / l, this.y / l) : new Vec2(0, 0);
+    }
+
+    angle() { return Math.atan2(this.y, this.x); }
+
+    static fromAngle(angle) {
+        return new Vec2(Math.cos(angle), Math.sin(angle));
+    }
 }
 
-// ========== Schlangen-Klasse ==========
+// ========== FOOD ==========
+class Food {
+    constructor() {
+        this.pos = new Vec2(
+            Math.random() * CONFIG.WORLD_SIZE,
+            Math.random() * CONFIG.WORLD_SIZE
+        );
+        this.hue = Math.random() * 360;
+        this.size = 4 + Math.random() * 3;
+        this.value = Math.floor(this.size / 2);
+        this.t = Math.random() * Math.PI * 2;
+    }
+}
+
+// ========== SNAKE ==========
 class Snake {
     constructor(name, isPlayer = false) {
         this.id = Math.random();
         this.name = name;
         this.isPlayer = isPlayer;
-        this.color = this.randomColor();
-        this.headPos = new Vec2(
-            Math.random() * WORLD_WIDTH,
-            Math.random() * WORLD_HEIGHT
+        this.alive = true;
+
+        // Position
+        this.pos = new Vec2(
+            500 + Math.random() * (CONFIG.WORLD_SIZE - 1000),
+            500 + Math.random() * (CONFIG.WORLD_SIZE - 1000)
         );
-        this.direction = new Vec2(Math.random() - 0.5, Math.random() - 0.5).normalized();
+        this.dir = new Vec2(Math.random() - 0.5, Math.random() - 0.5).norm();
 
-        this.baseSpeed = isPlayer ? PLAYER_BASE_SPEED : BOT_BASE_SPEED;
-        this.speed = this.baseSpeed;
+        // Properties
+        this.hue = Math.random() * 360;
+        this.speed = isPlayer ? CONFIG.PLAYER_SPEED : CONFIG.BOT_SPEED;
+        this.boosting = false;
 
-        this.radius = 12;
-        this.segments = [];
-        this.isDead = false;
+        // AI Properties
+        this.aiMode = 'hunt'; // 'hunt', 'flee', 'aggressive'
+        this.aiTarget = null;
+        this.aiTimer = 0;
         this.kills = 0;
-        this.isBoosting = false;
 
-        const spacing = this.radius * 1.8;
+        // Body
+        this.body = [];
         for (let i = 0; i < 20; i++) {
-            this.segments.push(this.headPos.sub(this.direction.mul(i * spacing)));
+            this.body.push(this.pos.sub(this.dir.mul(i * CONFIG.SEGMENT_SIZE)));
         }
     }
 
-    randomColor() {
-        const colors = [
-            '#5cf0c8', '#ff6b6b', '#ffd166', '#4dabf7',
-            '#b197fc', '#ff922b', '#51cf66', '#ff6b9d'
-        ];
-        return colors[Math.floor(Math.random() * colors.length)];
-    }
-
-    get length() {
-        return this.segments.length;
-    }
-
-    get score() {
-        return Math.floor(this.length * 10);
-    }
+    get length() { return this.body.length; }
+    get score() { return this.length * 10; }
 }
 
-// ========== Food-Klasse ==========
-class Food {
-    constructor(x, y, value = 1) {
-        this.id = Math.random();
-        this.pos = new Vec2(x, y);
-        this.value = value;
-        this.color = value > 5 ? '#ff6b6b' : '#ffd166';
-        this.radius = value > 5 ? 8 : 5;
-        this.glow = 0;
-    }
-}
-
-// ========== Spiel-Engine ==========
+// ========== GAME ==========
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
+
         this.snakes = [];
         this.food = [];
         this.player = null;
-        this.camera = { x: 0, y: 0 };
-        this.mousePos = new Vec2(0, 0);
+
+        this.cam = { x: 0, y: 0 };
+        this.mouse = { x: 0, y: 0 };
         this.keys = {};
-        this.startTime = 0;
+
         this.kills = 0;
+        this.startTime = 0;
+        this.botNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Viper',
+            'Python', 'Anaconda', 'Cobra', 'Killer', 'Hunter',
+            'Shadow', 'Ghost', 'Reaper', 'Striker', 'Ninja'];
 
-        // FPS
-        this._fps = 0;
-        this._fpsLast = performance.now();
-        this._fpsFrames = 0;
-
-        // Throttling
-        this._lastLeaderboard = 0;
-        this._lastMinimap = 0;
-
-        // Minimap-Canvas
-        this._minimapCanvas = null;
-        this._minimapCtx = null;
-
-        this.resize();
-        window.addEventListener('resize', () => this.resize());
+        this.setupCanvas();
+        this.setupInput();
     }
 
-    resize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        // Minimap neu dimensionieren beim Resize
-        this._minimapCanvas = null;
-        this._minimapCtx = null;
+    setupCanvas() {
+        const resize = () => {
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupInput() {
+        window.addEventListener('mousemove', e => {
+            this.mouse.x = e.clientX;
+            this.mouse.y = e.clientY;
+        });
+
+        window.addEventListener('keydown', e => {
+            this.keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            this.keys[e.key] = false;
+        });
     }
 
     init(playerName) {
+        console.log("🎮 Game starting...");
+
         this.snakes = [];
         this.food = [];
         this.kills = 0;
         this.startTime = Date.now();
 
+        // Create player
         this.player = new Snake(playerName, true);
         this.snakes.push(this.player);
 
-        const botNames = [
-            'Bot Alpha', 'Bot Beta', 'Bot Gamma', 'Bot Delta', 'Bot Epsilon',
-            'Bot Zeta', 'Bot Eta', 'Bot Theta', 'Bot Iota', 'Bot Kappa',
-            'Pro Gamer', 'Snake Master', 'Slither King', 'Speed Demon', 'Big Boss'
-        ];
-        for (let i = 0; i < 25; i++) {
-            this.snakes.push(new Snake(botNames[i % botNames.length] + ' ' + (i + 1)));
+        // Create bots
+        for (let i = 0; i < CONFIG.BOT_COUNT; i++) {
+            this.spawnBot();
         }
 
-        for (let i = 0; i < 800; i++) {
-            this.spawnFood();
+        // Spawn food
+        for (let i = 0; i < CONFIG.FOOD_COUNT; i++) {
+            this.food.push(new Food());
         }
+
+        console.log(`✅ Created ${this.snakes.length} snakes and ${this.food.length} food`);
     }
 
-    spawnFood(pos = null, value = 1) {
-        const p = pos || new Vec2(
-            Math.random() * WORLD_WIDTH,
-            Math.random() * WORLD_HEIGHT
-        );
-        this.food.push(new Food(p.x, p.y, value));
+    spawnBot() {
+        const name = this.botNames[Math.floor(Math.random() * this.botNames.length)] +
+            Math.floor(Math.random() * 100);
+        const bot = new Snake(name, false);
+        bot.hue = Math.random() * 360;
+        this.snakes.push(bot);
     }
 
     update(dt) {
-        if (!this.player || this.player.isDead) return;
+        if (!this.player || !this.player.alive) return;
 
-        this.updatePlayer(this.player, dt);
+        // Update player
+        this.updatePlayer(dt);
 
-        this.snakes.filter(s => !s.isPlayer && !s.isDead).forEach(bot => {
+        // Update bots
+        this.snakes.filter(s => !s.isPlayer && s.alive).forEach(bot => {
             this.updateBot(bot, dt);
         });
 
-        this.snakes.filter(s => !s.isDead).forEach(s => {
+        // Move all snakes
+        this.snakes.filter(s => s.alive).forEach(s => {
             this.moveSnake(s, dt);
         });
 
-        this.handleFoodCollisions();
-        this.handleSnakeCollisions();
+        // Collisions
+        this.checkCollisions();
 
-        this.snakes = this.snakes.filter(s => !s.isDead || s.segments.length > 0);
-
-        this.camera.x = this.player.headPos.x - this.canvas.width / 2;
-        this.camera.y = this.player.headPos.y - this.canvas.height / 2;
-
-        document.getElementById('score').textContent = 'Länge: ' + this.player.length;
-        document.getElementById('kills').textContent = 'Kills: ' + this.kills;
-        this.updateLeaderboard();
-    }
-
-    // ========= Player-Controller =========
-    updatePlayer(snake, dt) {
-        const toMouse = this.mousePos.sub(snake.headPos);
-        const targetDir = toMouse.normalized();
-        const dist = toMouse.length;
-
-        const lerp = 1 - Math.exp(-PLAYER_TURN_RATE * dt);
-        snake.direction = new Vec2(
-            snake.direction.x + (targetDir.x - snake.direction.x) * lerp,
-            snake.direction.y + (targetDir.y - snake.direction.y) * lerp
-        ).normalized();
-
-        const speedFactor = 0.7 + Math.min(dist / 800, 0.8); // 0.7 .. 1.5
-        let targetSpeed = snake.baseSpeed * speedFactor;
-
-        if (this.keys[' '] && snake.length > 25) {
-            targetSpeed *= PLAYER_BOOST_MULTIPLIER;
-            snake.isBoosting = true;
-
-            if (Math.random() < 0.35) {
-                const tail = snake.segments.pop();
-                if (tail) this.spawnFood(tail, 3);
+        // Keep bot count constant
+        const aliveBots = this.snakes.filter(s => !s.isPlayer && s.alive).length;
+        if (aliveBots < CONFIG.BOT_COUNT) {
+            for (let i = aliveBots; i < CONFIG.BOT_COUNT; i++) {
+                this.spawnBot();
             }
-        } else {
-            snake.isBoosting = false;
         }
 
-        const speedLerp = 1 - Math.exp(-6 * dt);
-        snake.speed = snake.speed + (targetSpeed - snake.speed) * speedLerp;
+        // Update camera
+        this.cam.x = this.player.pos.x - this.canvas.width / 2;
+        this.cam.y = this.player.pos.y - this.canvas.height / 2;
+
+        // Update UI
+        this.updateUI();
     }
 
-    // ========= Bots =========
-    updateBot(snake, dt) {
-        let target = null;
-        let minDist = 600;
+    updatePlayer(dt) {
+        const s = this.player;
 
-        // fettes Food prio
-        this.food.forEach(f => {
-            if (f.value < 3) return;
-            const dist = f.pos.sub(snake.headPos).length;
+        // Get mouse direction
+        const worldMouse = new Vec2(
+            this.mouse.x + this.cam.x,
+            this.mouse.y + this.cam.y
+        );
+        const toMouse = worldMouse.sub(s.pos).norm();
+
+        // Calculate angle difference with limit
+        const currentAngle = s.dir.angle();
+        const targetAngle = toMouse.angle();
+        let angleDiff = targetAngle - currentAngle;
+
+        // Normalize angle difference to [-PI, PI]
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // Limit turn speed
+        const maxTurn = CONFIG.MAX_TURN_ANGLE * dt * 60;
+        angleDiff = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+
+        // Apply limited turn
+        const newAngle = currentAngle + angleDiff;
+        s.dir = Vec2.fromAngle(newAngle);
+
+        // Boost
+        if ((this.keys[' '] || this.keys['Shift']) && s.length > 15) {
+            s.boosting = true;
+            s.speed = CONFIG.PLAYER_SPEED * CONFIG.BOOST_MULTI;
+
+            // Drop mass
+            if (Math.random() < 0.25 && s.body.length > 15) {
+                const tail = s.body.pop();
+                if (tail) {
+                    const f = new Food();
+                    f.pos = tail;
+                    f.size = 8;
+                    f.value = 3;
+                    this.food.push(f);
+                }
+            }
+        } else {
+            s.boosting = false;
+            s.speed = CONFIG.PLAYER_SPEED;
+        }
+    }
+
+    updateBot(snake, dt) {
+        snake.aiTimer += dt;
+
+        // Change AI mode periodically
+        if (snake.aiTimer > 3) {
+            snake.aiTimer = 0;
+            const rand = Math.random();
+
+            if (rand < CONFIG.BOT_AGGRESSION && snake.length > 25) {
+                snake.aiMode = 'aggressive';
+            } else if (snake.length < 15) {
+                snake.aiMode = 'flee';
+            } else {
+                snake.aiMode = 'hunt';
+            }
+        }
+
+        let desired = snake.dir;
+
+        switch (snake.aiMode) {
+            case 'aggressive':
+                desired = this.botAggressiveBehavior(snake);
+                break;
+            case 'flee':
+                desired = this.botFleeBehavior(snake);
+                break;
+            default:
+                desired = this.botHuntBehavior(snake);
+        }
+
+        // Apply turn with limits
+        const currentAngle = snake.dir.angle();
+        const targetAngle = desired.angle();
+        let angleDiff = targetAngle - currentAngle;
+
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        const maxTurn = CONFIG.MAX_TURN_ANGLE * 0.8 * dt * 60;
+        angleDiff = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+
+        const newAngle = currentAngle + angleDiff;
+        snake.dir = Vec2.fromAngle(newAngle);
+
+        // Smart boosting
+        if (snake.aiMode === 'aggressive' && snake.length > 30) {
+            snake.boosting = Math.random() < 0.3;
+            snake.speed = snake.boosting ?
+                CONFIG.BOT_SPEED * CONFIG.BOOST_MULTI : CONFIG.BOT_SPEED;
+        } else {
+            snake.boosting = false;
+            snake.speed = CONFIG.BOT_SPEED;
+        }
+    }
+
+    botHuntBehavior(snake) {
+        let target = null;
+        let minDist = 800;
+
+        // Find nearest food
+        for (let i = 0; i < 50; i++) {
+            const f = this.food[Math.floor(Math.random() * this.food.length)];
+            if (!f) continue;
+
+            const dist = f.pos.sub(snake.pos).len;
             if (dist < minDist) {
                 minDist = dist;
                 target = f.pos;
             }
-        });
-
-        // sonst normales Food
-        if (!target) {
-            this.food.forEach(f => {
-                const dist = f.pos.sub(snake.headPos).length;
-                if (dist < minDist) {
-                    minDist = dist;
-                    target = f.pos;
-                }
-            });
         }
 
-        // größeren Schlangen ausweichen
+        let desired = snake.dir;
+        if (target) {
+            desired = target.sub(snake.pos).norm();
+        }
+
+        // Avoid obstacles
+        const avoid = this.botAvoidObstacles(snake);
+        desired = desired.add(avoid.mul(3));
+
+        return desired.norm();
+    }
+
+    botAggressiveBehavior(snake) {
+        // Find weaker snake to hunt
+        let target = null;
+        let minDist = 600;
+
         this.snakes.forEach(other => {
-            if (other.id === snake.id || other.isDead) return;
-            if (other.length > snake.length * 1.2) {
-                const offset = other.headPos.sub(snake.headPos);
-                const dist = offset.length;
-                if (dist < 220) {
-                    target = snake.headPos.sub(offset);
-                    snake.speed = snake.baseSpeed * 1.6;
+            if (other.id === snake.id || !other.alive) return;
+            if (other.length >= snake.length * 0.8) return; // Only hunt weaker
+
+            const dist = other.pos.sub(snake.pos).len;
+            if (dist < minDist) {
+                minDist = dist;
+                target = other;
+            }
+        });
+
+        let desired = snake.dir;
+
+        if (target) {
+            // Try to circle around target
+            const toTarget = target.pos.sub(snake.pos);
+            const angle = toTarget.angle() + Math.PI / 2;
+            const circleDir = Vec2.fromAngle(angle);
+
+            desired = toTarget.norm().add(circleDir.mul(0.7)).norm();
+        } else {
+            // No target, hunt food
+            return this.botHuntBehavior(snake);
+        }
+
+        const avoid = this.botAvoidObstacles(snake);
+        desired = desired.add(avoid.mul(2));
+
+        return desired.norm();
+    }
+
+    botFleeBehavior(snake) {
+        // Flee from larger snakes
+        let flee = new Vec2(0, 0);
+
+        this.snakes.forEach(other => {
+            if (other.id === snake.id || !other.alive) return;
+            if (other.length < snake.length * 1.2) return;
+
+            const dist = other.pos.sub(snake.pos).len;
+            if (dist < 400) {
+                const away = snake.pos.sub(other.pos).norm();
+                flee = flee.add(away.mul(3 / (dist + 1)));
+            }
+        });
+
+        let desired = snake.dir.add(flee);
+
+        // Still collect nearby food
+        const nearFood = this.food.find(f =>
+            f.pos.sub(snake.pos).len < 150
+        );
+        if (nearFood) {
+            desired = desired.add(nearFood.pos.sub(snake.pos).norm().mul(0.3));
+        }
+
+        const avoid = this.botAvoidObstacles(snake);
+        desired = desired.add(avoid.mul(3));
+
+        return desired.norm();
+    }
+
+    botAvoidObstacles(snake) {
+        let avoid = new Vec2(0, 0);
+
+        // Avoid other snakes' bodies
+        this.snakes.forEach(other => {
+            if (!other.alive) return;
+
+            for (let i = 5; i < other.body.length; i++) {
+                const seg = other.body[i];
+                const dist = seg.sub(snake.pos).len;
+
+                if (dist < 100) {
+                    const away = snake.pos.sub(seg).norm();
+                    avoid = avoid.add(away.mul(2 / (dist + 1)));
                 }
             }
         });
 
-        if (target) {
-            const dir = target.sub(snake.headPos).normalized();
-            const lerp = 1 - Math.exp(-BOT_TURN_RATE * dt);
-            snake.direction = new Vec2(
-                snake.direction.x + (dir.x - snake.direction.x) * lerp,
-                snake.direction.y + (dir.y - snake.direction.y) * lerp
-            ).normalized();
-        }
+        // Avoid walls
+        const margin = 400;
+        if (snake.pos.x < margin) avoid.x += (margin - snake.pos.x) / 100;
+        if (snake.pos.x > CONFIG.WORLD_SIZE - margin)
+            avoid.x -= (snake.pos.x - (CONFIG.WORLD_SIZE - margin)) / 100;
+        if (snake.pos.y < margin) avoid.y += (margin - snake.pos.y) / 100;
+        if (snake.pos.y > CONFIG.WORLD_SIZE - margin)
+            avoid.y -= (snake.pos.y - (CONFIG.WORLD_SIZE - margin)) / 100;
 
-        if (Math.random() < 0.015) {
-            const angle = (Math.random() - 0.5) * 0.6;
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
-            snake.direction = new Vec2(
-                snake.direction.x * cos - snake.direction.y * sin,
-                snake.direction.x * sin + snake.direction.y * cos
-            ).normalized();
-        }
+        return avoid;
     }
 
     moveSnake(snake, dt) {
-        const newHead = snake.headPos.add(snake.direction.mul(snake.speed * dt));
+        // Move head
+        const vel = snake.dir.mul(snake.speed * dt);
+        snake.pos = snake.pos.add(vel);
 
-        newHead.x = (newHead.x + WORLD_WIDTH) % WORLD_WIDTH;
-        newHead.y = (newHead.y + WORLD_HEIGHT) % WORLD_HEIGHT;
+        // Clamp to world
+        snake.pos.x = Math.max(0, Math.min(CONFIG.WORLD_SIZE, snake.pos.x));
+        snake.pos.y = Math.max(0, Math.min(CONFIG.WORLD_SIZE, snake.pos.y));
 
-        snake.headPos = newHead;
+        // Update body
+        snake.body.unshift(new Vec2(snake.pos.x, snake.pos.y));
 
-        const spacing = snake.radius * 1.8;
-        snake.segments[0] = newHead;
+        // Keep body length
+        while (snake.body.length > snake.length) {
+            snake.body.pop();
+        }
 
-        for (let i = 1; i < snake.segments.length; i++) {
-            const prev = snake.segments[i - 1];
-            const cur = snake.segments[i];
-            const delta = prev.sub(cur);
+        // Smooth body
+        for (let i = 1; i < snake.body.length; i++) {
+            const prev = snake.body[i - 1];
+            const curr = snake.body[i];
+            const diff = prev.sub(curr);
+            const dist = diff.len;
 
-            if (delta.length > spacing) {
-                snake.segments[i] = prev.sub(delta.normalized().mul(spacing));
+            if (dist > CONFIG.SEGMENT_SIZE) {
+                snake.body[i] = prev.sub(diff.norm().mul(CONFIG.SEGMENT_SIZE));
             }
         }
     }
 
-    handleFoodCollisions() {
-        const eatRadius = 20;
-
-        this.snakes.filter(s => !s.isDead).forEach(snake => {
+    checkCollisions() {
+        // Food collision
+        this.snakes.filter(s => s.alive).forEach(snake => {
             for (let i = this.food.length - 1; i >= 0; i--) {
                 const f = this.food[i];
-                if (f.pos.sub(snake.headPos).length <= eatRadius) {
+                const dist = f.pos.sub(snake.pos).len;
+
+                if (dist < CONFIG.HEAD_SIZE) {
+                    snake.body.push(snake.body[snake.body.length - 1]);
                     this.food.splice(i, 1);
-                    this.growSnake(snake, f.value);
-                    this.spawnFood();
+
+                    if (this.food.length < CONFIG.FOOD_COUNT) {
+                        this.food.push(new Food());
+                    }
                 }
             }
         });
-    }
 
-    growSnake(snake, value) {
-        const extra = Math.floor(value * 2);
-        const tail = snake.segments[snake.segments.length - 1];
-        for (let i = 0; i < extra; i++) {
-            snake.segments.push(new Vec2(tail.x, tail.y));
-        }
-    }
+        // Snake collision
+        const alive = this.snakes.filter(s => s.alive);
 
-    handleSnakeCollisions() {
-        const hitRadius = 15;
+        for (let i = 0; i < alive.length; i++) {
+            const s1 = alive[i];
 
-        this.snakes.filter(s => !s.isDead).forEach(snake => {
-            this.snakes.filter(other => !other.isDead && other.id !== snake.id).forEach(other => {
-                for (let i = 3; i < other.segments.length; i++) {
-                    if (snake.headPos.sub(other.segments[i]).length < hitRadius) {
-                        this.killSnake(snake);
-                        if (snake.isPlayer) {
-                            other.kills++;
-                        } else if (other.isPlayer) {
-                            this.kills++;
-                        }
-                        return;
+            for (let j = 0; j < alive.length; j++) {
+                const s2 = alive[j];
+                if (s1.id === s2.id) continue;
+
+                for (let k = 5; k < s2.body.length; k++) {
+                    const seg = s2.body[k];
+                    const dist = s1.pos.sub(seg).len;
+
+                    if (dist < CONFIG.HEAD_SIZE) {
+                        this.killSnake(s1, s2);
+                        break;
                     }
                 }
-            });
-        });
+
+                if (!s1.alive) break;
+            }
+        }
     }
 
-    killSnake(snake) {
-        snake.isDead = true;
+    killSnake(snake, killer) {
+        snake.alive = false;
 
-        for (let i = 0; i < snake.segments.length; i += 3) {
-            this.spawnFood(snake.segments[i], 8);
+        // Drop food
+        snake.body.forEach((seg, i) => {
+            if (i % 2 === 0) {
+                const f = new Food();
+                f.pos = seg;
+                f.size = 7;
+                f.value = 2;
+                this.food.push(f);
+            }
+        });
+
+        // Update kills
+        if (killer) {
+            killer.kills++;
+            if (killer.isPlayer) {
+                this.kills++;
+            }
         }
 
+        // Game over for player
         if (snake.isPlayer) {
-            setTimeout(() => this.gameOver(), 500);
+            setTimeout(() => this.gameOver(), 1000);
         }
     }
 
     gameOver() {
-        const playTime = Math.floor((Date.now() - this.startTime) / 1000);
-        document.getElementById('finalScore').textContent = 'Finale Länge: ' + this.player.length;
+        const time = Math.floor((Date.now() - this.startTime) / 1000);
+        document.getElementById('finalScore').textContent = 'Score: ' + this.player.score;
         document.getElementById('finalKills').textContent = 'Kills: ' + this.kills;
-        document.getElementById('playTime').textContent = 'Spielzeit: ' + playTime + ' Sekunden';
+        document.getElementById('playTime').textContent = 'Zeit: ' + time + 's';
         document.getElementById('gameOver').classList.add('visible');
     }
 
-    updateLeaderboard() {
-        const now = performance.now();
-        if (now - this._lastLeaderboard < 200) {
-            return;
-        }
-        this._lastLeaderboard = now;
+    updateUI() {
+        document.getElementById('score').textContent = 'Länge: ' + this.player.length;
+        document.getElementById('kills').textContent = 'Kills: ' + this.kills;
 
-        const sorted = [...this.snakes]
-            .filter(s => !s.isDead)
-            .sort((a, b) => b.length - a.length)
+        const top = [...this.snakes]
+            .filter(s => s.alive)
+            .sort((a, b) => b.score - a.score)
             .slice(0, 10);
 
-        const html = sorted.map((s, i) => {
+        const html = top.map((s, i) => {
             const cls = s.isPlayer ? 'player' : '';
             return `<div class="leaderboard-entry ${cls}">
                 <span>${i + 1}. ${s.name}</span>
@@ -381,238 +562,245 @@ class Game {
             </div>`;
         }).join('');
 
-        document.getElementById('leaderboardList').innerHTML = html;
+        const el = document.getElementById('leaderboardList');
+        if (el) el.innerHTML = html;
     }
 
     render() {
         const ctx = this.ctx;
-        const canvas = this.canvas;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
 
-        // Hintergrund
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = '#2b2b2b';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#0a1628';
+        ctx.fillRect(0, 0, w, h);
 
-        // Welt-Transform
         ctx.save();
-        ctx.translate(-this.camera.x, -this.camera.y);
+        ctx.translate(-this.cam.x, -this.cam.y);
 
-        // Grid
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
+        this.drawGrid(ctx);
 
-        const startX = Math.floor(this.camera.x / GRID_SIZE) * GRID_SIZE;
-        const endX = startX + canvas.width + GRID_SIZE;
-        const startY = Math.floor(this.camera.y / GRID_SIZE) * GRID_SIZE;
-        const endY = startY + canvas.height + GRID_SIZE;
-
-        for (let x = startX; x <= endX; x += GRID_SIZE) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, WORLD_HEIGHT);
-            ctx.stroke();
-        }
-
-        for (let y = startY; y <= endY; y += GRID_SIZE) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(WORLD_WIDTH, y);
-            ctx.stroke();
-        }
-
+        // Food
         this.food.forEach(f => {
-            f.glow = (f.glow + 0.1) % (Math.PI * 2);
-            const glowSize = f.radius + Math.sin(f.glow) * 2;
+            f.t += 0.05;
+            const glow = Math.sin(f.t) * 2;
 
-            if (f.value > 5) {
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = f.color;
-            } else {
-                ctx.shadowBlur = 0;
-            }
+            ctx.shadowBlur = 8 + glow;
+            ctx.shadowColor = `hsl(${f.hue}, 100%, 50%)`;
+            ctx.fillStyle = `hsl(${f.hue}, 100%, 60%)`;
 
-            ctx.fillStyle = f.color;
             ctx.beginPath();
-            ctx.arc(f.pos.x, f.pos.y, glowSize, 0, Math.PI * 2);
+            ctx.arc(f.pos.x, f.pos.y, f.size, 0, Math.PI * 2);
             ctx.fill();
         });
         ctx.shadowBlur = 0;
 
-        // Schlangen
-        const sorted = [...this.snakes].filter(s => !s.isDead).sort((a, b) => a.length - b.length);
+        // Snakes
+        const sorted = [...this.snakes].filter(s => s.alive)
+            .sort((a, b) => a.length - b.length);
 
-        sorted.forEach(snake => {
-            ctx.strokeStyle = snake.color;
-            ctx.lineWidth = snake.radius * 2;
+        sorted.forEach(s => {
+            // Body
+            const color = `hsl(${s.hue}, 80%, 50%)`;
+
+            if (s.boosting) {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = color;
+            }
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = CONFIG.HEAD_SIZE * 1.5;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            if (snake.isBoosting) {
-                ctx.shadowBlur = 18;
-                ctx.shadowColor = snake.color;
-            }
-
             ctx.beginPath();
-            snake.segments.forEach((seg, i) => {
-                if (i === 0) ctx.moveTo(seg.x, seg.y);
-                else ctx.lineTo(seg.x, seg.y);
+            s.body.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
             });
             ctx.stroke();
+
             ctx.shadowBlur = 0;
 
-            // Kopf
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            // Direction arrows
+            this.drawDirectionArrows(ctx, s);
+
+            // Head
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.beginPath();
-            ctx.arc(snake.headPos.x, snake.headPos.y, snake.radius * 1.4, 0, Math.PI * 2);
+            ctx.arc(s.pos.x, s.pos.y, CONFIG.HEAD_SIZE, 0, Math.PI * 2);
             ctx.fill();
 
-            const eyeOffset = snake.radius * 0.6;
-            const angle = Math.atan2(snake.direction.y, snake.direction.x);
-            const perpX = -Math.sin(angle) * eyeOffset;
-            const perpY = Math.cos(angle) * eyeOffset;
+            // Eyes
+            const angle = s.dir.angle();
+            const eyeDist = 10;
+            const eyeSize = 5;
 
-            // Augen
+            const eye1 = new Vec2(
+                s.pos.x + Math.cos(angle - 0.4) * eyeDist,
+                s.pos.y + Math.sin(angle - 0.4) * eyeDist
+            );
+            const eye2 = new Vec2(
+                s.pos.x + Math.cos(angle + 0.4) * eyeDist,
+                s.pos.y + Math.sin(angle + 0.4) * eyeDist
+            );
+
             ctx.fillStyle = '#fff';
             ctx.beginPath();
-            ctx.arc(snake.headPos.x + perpX, snake.headPos.y + perpY, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(snake.headPos.x - perpX, snake.headPos.y - perpY, 5, 0, Math.PI * 2);
+            ctx.arc(eye1.x, eye1.y, eyeSize, 0, Math.PI * 2);
+            ctx.arc(eye2.x, eye2.y, eyeSize, 0, Math.PI * 2);
             ctx.fill();
 
-            // Pupillen
             ctx.fillStyle = '#000';
             ctx.beginPath();
-            ctx.arc(
-                snake.headPos.x + perpX + snake.direction.x * 2,
-                snake.headPos.y + perpY + snake.direction.y * 2,
-                3, 0, Math.PI * 2
-            );
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(
-                snake.headPos.x - perpX + snake.direction.x * 2,
-                snake.headPos.y - perpY + snake.direction.y * 2,
-                3, 0, Math.PI * 2
-            );
+            ctx.arc(eye1.x + s.dir.x * 2, eye1.y + s.dir.y * 2, 3, 0, Math.PI * 2);
+            ctx.arc(eye2.x + s.dir.x * 2, eye2.y + s.dir.y * 2, 3, 0, Math.PI * 2);
             ctx.fill();
 
             // Name
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 18px Arial';
-            ctx.textAlign = 'center';
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
-            ctx.strokeText(snake.name, snake.headPos.x, snake.headPos.y - snake.radius - 15);
-            ctx.fillText(snake.name, snake.headPos.x, snake.headPos.y - snake.radius - 15);
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.strokeText(s.name, s.pos.x, s.pos.y - 25);
+            ctx.fillText(s.name, s.pos.x, s.pos.y - 25);
         });
 
         ctx.restore();
-
-        // Minimap (optimiert)
-        this.renderMinimap();
-
-        // FPS messen
-        const now = performance.now();
-        this._fpsFrames++;
-        if (now - this._fpsLast >= 1000) {
-            this._fps = this._fpsFrames;
-            this._fpsFrames = 0;
-            this._fpsLast = now;
-        }
-
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = 'white';
-        ctx.font = '14px Arial';
-        ctx.fillText(`FPS: ${this._fps}`, 10, 20);
-        ctx.restore();
+        this.drawMinimap(ctx);
     }
 
-    // Minimap mit eigenem Canvas, ~6–7 FPS
-    renderMinimap() {
-        const now = performance.now();
-        if (now - this._lastMinimap < 150) {
-            return;
-        }
-        this._lastMinimap = now;
+    drawDirectionArrows(ctx, snake) {
+        const angle = snake.dir.angle();
+        const arrowDist = CONFIG.HEAD_SIZE + 15;
+        const arrowSize = 8;
 
-        const container = document.getElementById('minimap');
-        if (!container) return;
+        // Main arrow
+        const arrowPos = new Vec2(
+            snake.pos.x + Math.cos(angle) * arrowDist,
+            snake.pos.y + Math.sin(angle) * arrowDist
+        );
 
-        if (!this._minimapCanvas) {
-            const rect = container.getBoundingClientRect();
-            const dpr = window.devicePixelRatio || 1;
+        ctx.fillStyle = snake.isPlayer ?
+            'rgba(92, 240, 200, 0.8)' : 'rgba(255, 255, 255, 0.5)';
+        ctx.strokeStyle = snake.isPlayer ?
+            'rgba(92, 240, 200, 1)' : 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2;
 
-            const canvas = document.createElement('canvas');
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            canvas.style.width = rect.width + 'px';
-            canvas.style.height = rect.height + 'px';
+        ctx.save();
+        ctx.translate(arrowPos.x, arrowPos.y);
+        ctx.rotate(angle);
 
-            container.innerHTML = '';
-            container.appendChild(canvas);
+        ctx.beginPath();
+        ctx.moveTo(arrowSize, 0);
+        ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+        ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
 
-            this._minimapCanvas = canvas;
-            this._minimapCtx = canvas.getContext('2d');
-        }
+        ctx.restore();
 
-        const ctx = this._minimapCtx;
-        const dpr = window.devicePixelRatio || 1;
-        const w = this._minimapCanvas.width;
-        const h = this._minimapCanvas.height;
+        // Side indicators (only for player)
+        if (snake.isPlayer) {
+            const sideAlpha = 0.3;
 
-        const scaleX = w / WORLD_WIDTH;
-        const scaleY = h / WORLD_HEIGHT;
-
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(0, 0, w, h);
-
-        // Schlangen
-        this.snakes.filter(s => !s.isDead).forEach(snake => {
-            ctx.fillStyle = snake.isPlayer ? '#5cf0c8' : '#ffffff';
-            ctx.beginPath();
-            ctx.arc(
-                snake.headPos.x * scaleX,
-                snake.headPos.y * scaleY,
-                (snake.isPlayer ? 4 : 2) * dpr,
-                0, Math.PI * 2
+            // Left arrow
+            const leftAngle = angle - Math.PI / 6;
+            const leftPos = new Vec2(
+                snake.pos.x + Math.cos(leftAngle) * arrowDist,
+                snake.pos.y + Math.sin(leftAngle) * arrowDist
             );
+
+            ctx.fillStyle = `rgba(92, 240, 200, ${sideAlpha})`;
+            ctx.save();
+            ctx.translate(leftPos.x, leftPos.y);
+            ctx.rotate(leftAngle);
+            ctx.beginPath();
+            ctx.moveTo(6, 0);
+            ctx.lineTo(-3, -3);
+            ctx.lineTo(-3, 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Right arrow
+            const rightAngle = angle + Math.PI / 6;
+            const rightPos = new Vec2(
+                snake.pos.x + Math.cos(rightAngle) * arrowDist,
+                snake.pos.y + Math.sin(rightAngle) * arrowDist
+            );
+
+            ctx.save();
+            ctx.translate(rightPos.x, rightPos.y);
+            ctx.rotate(rightAngle);
+            ctx.beginPath();
+            ctx.moveTo(6, 0);
+            ctx.lineTo(-3, -3);
+            ctx.lineTo(-3, 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    drawGrid(ctx) {
+        const startX = Math.floor(this.cam.x / CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE;
+        const endX = startX + this.canvas.width + CONFIG.GRID_SIZE;
+        const startY = Math.floor(this.cam.y / CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE;
+        const endY = startY + this.canvas.height + CONFIG.GRID_SIZE;
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+
+        for (let x = startX; x <= endX; x += CONFIG.GRID_SIZE) {
+            ctx.moveTo(x, startY);
+            ctx.lineTo(x, endY);
+        }
+        for (let y = startY; y <= endY; y += CONFIG.GRID_SIZE) {
+            ctx.moveTo(startX, y);
+            ctx.lineTo(endX, y);
+        }
+        ctx.stroke();
+    }
+
+    drawMinimap(ctx) {
+        const size = 150;
+        const x = this.canvas.width - size - 20;
+        const y = 20;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(x, y, size, size);
+
+        const scale = size / CONFIG.WORLD_SIZE;
+
+        this.snakes.filter(s => s.alive).forEach(s => {
+            const mx = x + s.pos.x * scale;
+            const my = y + s.pos.y * scale;
+
+            ctx.fillStyle = s.isPlayer ? '#5cf0c8' : `hsl(${s.hue}, 80%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(mx, my, s.isPlayer ? 3 : 1.5, 0, Math.PI * 2);
             ctx.fill();
         });
 
-        // Viewport-Rechteck
-        if (this.player) {
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1 * dpr;
-            const vw = this.canvas.width * scaleX;
-            const vh = this.canvas.height * scaleY;
-            const vx = this.camera.x * scaleX;
-            const vy = this.camera.y * scaleY;
-            ctx.strokeRect(vx, vy, vw, vh);
-        }
+        // Border
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, size, size);
     }
 
-    // 60-FPS Fixed-Timestep
     start() {
-        const STEP = 1 / 60;
         let last = performance.now();
-        let accumulator = 0;
 
         const loop = (now) => {
-            let frameTime = (now - last) / 1000;
-            if (frameTime > 0.25) frameTime = 0.25;
+            const dt = Math.min((now - last) / 1000, 0.1);
             last = now;
 
-            accumulator += frameTime;
-
-            while (accumulator >= STEP) {
-                this.update(STEP);
-                accumulator -= STEP;
-            }
-
+            this.update(dt);
             this.render();
+
             requestAnimationFrame(loop);
         };
 
@@ -620,64 +808,43 @@ class Game {
     }
 }
 
-// ========== Wrapper für Blazor ==========
+// ========== INIT ==========
 window.slitherStandalone = {
-    _initialized: false,
     _game: null,
 
     init: function () {
-        if (this._initialized) {
-            return;
-        }
-        this._initialized = true;
-        console.log("slitherStandalone.init called");
+        console.log("🚀 Initializing Slither.io...");
 
         const game = new Game();
         this._game = game;
 
-        const playButton = document.getElementById('playButton');
+        const playBtn = document.getElementById('playButton');
         const nameInput = document.getElementById('nameInput');
-        const restartButton = document.getElementById('restartButton');
+        const restartBtn = document.getElementById('restartButton');
 
-        if (!playButton) {
-            console.warn("playButton not found");
-            return;
+        if (playBtn) {
+            playBtn.onclick = () => {
+                const name = nameInput.value.trim() || 'Player';
+                document.getElementById('startScreen').classList.add('hidden');
+                game.init(name);
+                game.start();
+            };
         }
 
-        playButton.addEventListener('click', () => {
-            const name = (nameInput.value || '').trim() || 'Player';
-            document.getElementById('startScreen').classList.add('hidden');
-            game.init(name);
-            game.start();
-        });
+        if (restartBtn) {
+            restartBtn.onclick = () => {
+                document.getElementById('gameOver').classList.remove('visible');
+                const name = game.player ? game.player.name : 'Player';
+                game.init(name);
+            };
+        }
 
-        restartButton.addEventListener('click', () => {
-            document.getElementById('gameOver').classList.remove('visible');
-            const name = game.player ? game.player.name : 'Player';
-            game.init(name);
-        });
+        if (nameInput) {
+            nameInput.addEventListener('keypress', e => {
+                if (e.key === 'Enter') playBtn.click();
+            });
+        }
 
-        nameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                playButton.click();
-            }
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (game.player) {
-                game.mousePos = new Vec2(
-                    e.clientX + game.camera.x,
-                    e.clientY + game.camera.y
-                );
-            }
-        });
-
-        document.addEventListener('keydown', (e) => {
-            game.keys[e.key] = true;
-        });
-
-        document.addEventListener('keyup', (e) => {
-            game.keys[e.key] = false;
-        });
+        console.log("✅ Ready to play!");
     }
 };
