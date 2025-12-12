@@ -87,7 +87,6 @@
     font-weight: 500;
 }
 
-/* Navigation - OPTIMIERT */
 .layout__nav {
     display: flex;
     align-items: center;
@@ -307,7 +306,6 @@
     }
 }
 
-/* Performance optimizations */
 * {
     -webkit-tap-highlight-color: transparent;
 }
