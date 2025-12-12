@@ -11,7 +11,7 @@
         <div class="game-title">
             <h1>🏰 Tower Defense</h1>
         </div>
-        
+
         <div class="stats-bar">
             <div class="stat gold">
                 <span class="icon">💰</span>
@@ -29,6 +29,10 @@
                 <span class="icon">👹</span>
                 <span class="value">@_enemies.Count</span>
             </div>
+            <button class="speed-btn @(_gameSpeed == 2.0f ? "active" : "")"
+                    @onclick="ToggleSpeed">
+                ⚡ x@_gameSpeed.ToString("0.0")
+            </button>
         </div>
     </div>
 
@@ -44,7 +48,7 @@
             </div>
 
             <div class="tower-list @(_menuOpen ? "open" : "")">
-                <div class="tower-card @(_selectedTower == TowerType.Basic ? "selected" : "")" 
+                <div class="tower-card @(_selectedTower == TowerType.Basic ? "selected" : "")"
                      @onclick="() => SelectTower(TowerType.Basic)">
                     <div class="tower-emoji">🗼</div>
                     <div class="tower-details">
@@ -57,7 +61,7 @@
                     </div>
                 </div>
 
-                <div class="tower-card @(_selectedTower == TowerType.Sniper ? "selected" : "")" 
+                <div class="tower-card @(_selectedTower == TowerType.Sniper ? "selected" : "")"
                      @onclick="() => SelectTower(TowerType.Sniper)">
                     <div class="tower-emoji">🎯</div>
                     <div class="tower-details">
@@ -70,7 +74,7 @@
                     </div>
                 </div>
 
-                <div class="tower-card @(_selectedTower == TowerType.Cannon ? "selected" : "")" 
+                <div class="tower-card @(_selectedTower == TowerType.Cannon ? "selected" : "")"
                      @onclick="() => SelectTower(TowerType.Cannon)">
                     <div class="tower-emoji">💥</div>
                     <div class="tower-details">
@@ -83,16 +87,13 @@
                     </div>
                 </div>
 
-                <button class="start-wave-btn" @onclick="StartNextWave" disabled="@_waveActive">
-                    @if (_waveActive)
-                    {
-                        <span>⏳ Wave läuft...</span>
-                    }
-                    else
-                    {
-                        <span>▶️ Wave @(_currentWave + 1)</span>
-                    }
+                <button class="start-wave-btn" @onclick="StartNextWave" disabled="@_gameOver">
+                    <span>▶️ Wave @(_nextWaveNumber) starten</span>
                 </button>
+
+                <div class="wave-info">
+                    <p>Aktive Waves: <strong>@_activeWaves</strong></p>
+                </div>
             </div>
         </div>
 
@@ -102,8 +103,9 @@
                 <div class="game-over-box">
                     <h1>💀 Game Over</h1>
                     <div class="final-stats">
-                        <p>Wave erreicht: <strong>@_currentWave</strong></p>
-                        <p>Gold verdient: <strong>@(_gold + (_currentWave * 100))</strong></p>
+                        <p>Höchste Wave: <strong>@_currentWave</strong></p>
+                        <p>Gold verdient: <strong>@_totalGoldEarned</strong></p>
+                        <p>Enemies besiegt: <strong>@_totalEnemiesKilled</strong></p>
                     </div>
                     <button class="restart-btn" @onclick="RestartGame">
                         🔄 Nochmal spielen
@@ -118,12 +120,17 @@
     private DotNetObjectReference<TowerDef>? _dotNetRef;
     private bool _isRendered = false;
     private bool _menuOpen = true;
-    
+
     private int _gold = 200;
     private int _lives = 20;
     private int _currentWave = 0;
-    private bool _waveActive = false;
+    private int _nextWaveNumber = 1;
+    private int _activeWaves = 0;
     private bool _gameOver = false;
+    private float _gameSpeed = 1.0f;
+
+    private int _totalGoldEarned = 0;
+    private int _totalEnemiesKilled = 0;
 
     private TowerType? _selectedTower = null;
     private List<Tower> _towers = new();
@@ -132,6 +139,7 @@
     private List<Point> _path = new();
 
     private System.Threading.Timer? _gameTimer;
+    private readonly object _lockObject = new();
 
     enum TowerType { Basic, Sniper, Cannon }
 
@@ -179,6 +187,13 @@
     private void ToggleMenu()
     {
         _menuOpen = !_menuOpen;
+        StateHasChanged();
+    }
+
+    private void ToggleSpeed()
+    {
+        _gameSpeed = _gameSpeed == 1.0f ? 2.0f : 1.0f;
+        StateHasChanged();
     }
 
     protected override void OnInitialized()
@@ -192,7 +207,7 @@
         if (firstRender)
         {
             _isRendered = true;
-            
+
             try
             {
                 await JS.InvokeVoidAsync("towerDefense.init");
@@ -202,8 +217,8 @@
             {
                 Console.WriteLine($"JS Init Error: {ex.Message}");
             }
-            
-            _gameTimer = new System.Threading.Timer(_ => 
+
+            _gameTimer = new System.Threading.Timer(_ =>
             {
                 _ = InvokeAsync(() => GameLoop());
             }, null, 100, 16);
@@ -213,29 +228,23 @@
     [JSInvokable]
     public async Task OnCanvasClick(float x, float y)
     {
-        Console.WriteLine($"Tower placement at: {x}, {y}");
-        
         if (_selectedTower == null || _gameOver)
         {
-            Console.WriteLine("No tower selected or game over");
             return;
         }
 
         var tower = CreateTower(_selectedTower.Value, x, y);
-        
+
         if (_gold >= tower.Cost && !IsOnPath(x, y))
         {
-            _gold -= tower.Cost;
-            _towers.Add(tower);
+            lock (_lockObject)
+            {
+                _gold -= tower.Cost;
+                _towers.Add(tower);
+            }
             _selectedTower = null;
-            
-            Console.WriteLine($"Tower placed! Towers: {_towers.Count}, Gold: {_gold}");
-            
+
             await InvokeAsync(StateHasChanged);
-        }
-        else
-        {
-            Console.WriteLine($"Cannot place: Gold={_gold}, Cost={tower.Cost}, OnPath={IsOnPath(x, y)}");
         }
     }
 
@@ -257,27 +266,42 @@
     private void SelectTower(TowerType type)
     {
         _selectedTower = type;
-        Console.WriteLine($"Tower selected: {type}");
+        StateHasChanged();
     }
 
     private Tower CreateTower(TowerType type, float x, float y)
     {
         return type switch
         {
-            TowerType.Basic => new Tower 
-            { 
-                X = x, Y = y, Type = type, 
-                Range = 100, FireRate = 1f, Damage = 10, Cost = 50 
+            TowerType.Basic => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 100,
+                FireRate = 1f,
+                Damage = 10,
+                Cost = 50
             },
-            TowerType.Sniper => new Tower 
-            { 
-                X = x, Y = y, Type = type, 
-                Range = 200, FireRate = 2f, Damage = 50, Cost = 100 
+            TowerType.Sniper => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 200,
+                FireRate = 2f,
+                Damage = 50,
+                Cost = 100
             },
-            TowerType.Cannon => new Tower 
-            { 
-                X = x, Y = y, Type = type, 
-                Range = 80, FireRate = 0.5f, Damage = 100, Cost = 150 
+            TowerType.Cannon => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 80,
+                FireRate = 0.5f,
+                Damage = 100,
+                Cost = 150
             },
             _ => throw new ArgumentException()
         };
@@ -290,7 +314,7 @@
         {
             var p1 = _path[i];
             var p2 = _path[i + 1];
-            
+
             var dist = DistanceToSegment(x, y, p1.X, p1.Y, p2.X, p2.Y);
             if (dist < pathWidth) return true;
         }
@@ -307,157 +331,184 @@
         var t = Math.Max(0, Math.Min(1, ((px - x1) * dx + (py - y1) * dy) / (len * len)));
         var projX = x1 + t * dx;
         var projY = y1 + t * dy;
-        
+
         return Distance(px, py, projX, projY);
     }
 
     private void StartNextWave()
     {
-        if (_waveActive || _gameOver) return;
+        if (_gameOver) return;
 
-        _currentWave++;
-        _waveActive = true;
+        var waveNumber = _nextWaveNumber;
+        _nextWaveNumber++;
 
-        var enemyCount = 5 + _currentWave * 3;
-        var enemyHP = 50 + _currentWave * 25;
-
-        _ = Task.Run(async () =>
+        if (waveNumber > _currentWave)
         {
-            for (int i = 0; i < enemyCount; i++)
+            _currentWave = waveNumber;
+        }
+
+        var enemyCount = 5 + waveNumber * 3;
+        var enemyHP = 50 + waveNumber * 25;
+        var enemySpeed = 30 + waveNumber * 5;
+
+        _activeWaves++;
+        StateHasChanged();
+
+        _ = Task.Run(async () => await SpawnWaveEnemies(enemyCount, enemyHP, enemySpeed));
+    }
+
+    private async Task SpawnWaveEnemies(int count, int hp, float speed)
+    {
+        try
+        {
+            for (int i = 0; i < count; i++)
             {
+                if (_gameOver) break;
+
                 var enemy = new Enemy
                 {
                     X = _path[0].X,
                     Y = _path[0].Y,
                     PathIndex = 0,
-                    Speed = 30 + _currentWave * 5,
-                    HP = enemyHP,
-                    MaxHP = enemyHP
+                    Speed = speed,
+                    HP = hp,
+                    MaxHP = hp
                 };
-                
-                _enemies.Add(enemy);
-                await Task.Delay(1000);
+
+                lock (_lockObject)
+                {
+                    _enemies.Add(enemy);
+                }
+
+                var delay = Math.Max(200, 1000 - (_currentWave * 10));
+                await Task.Delay(delay);
             }
-        });
+        }
+        finally
+        {
+            _activeWaves--;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async void GameLoop()
     {
         if (_gameOver || !_isRendered) return;
 
-        const float dt = 0.016f;
+        var dt = 0.016f * _gameSpeed;
 
-        var enemiesToRemove = new List<Enemy>();
-        foreach (var enemy in _enemies.ToList())
+        lock (_lockObject)
         {
-            if (enemy.IsDead) continue;
-
-            if (enemy.PathIndex >= _path.Count - 1)
+            var enemiesToRemove = new List<Enemy>();
+            foreach (var enemy in _enemies.ToList())
             {
-                enemiesToRemove.Add(enemy);
-                _lives--;
-                
-                if (_lives <= 0)
+                if (enemy.IsDead) continue;
+
+                if (enemy.PathIndex >= _path.Count - 1)
                 {
-                    _gameOver = true;
-                    await InvokeAsync(StateHasChanged);
+                    enemiesToRemove.Add(enemy);
+                    _lives--;
+
+                    if (_lives <= 0)
+                    {
+                        _gameOver = true;
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            var target = _path[enemy.PathIndex + 1];
-            var dx = target.X - enemy.X;
-            var dy = target.Y - enemy.Y;
-            var dist = MathF.Sqrt(dx * dx + dy * dy);
+                var target = _path[enemy.PathIndex + 1];
+                var dx = target.X - enemy.X;
+                var dy = target.Y - enemy.Y;
+                var dist = MathF.Sqrt(dx * dx + dy * dy);
 
-            if (dist < 5)
-            {
-                enemy.PathIndex++;
-            }
-            else
-            {
-                enemy.X += (dx / dist) * enemy.Speed * dt;
-                enemy.Y += (dy / dist) * enemy.Speed * dt;
-            }
-        }
-
-        foreach (var e in enemiesToRemove)
-        {
-            _enemies.Remove(e);
-        }
-
-        foreach (var tower in _towers)
-        {
-            tower.Cooldown -= dt;
-            if (tower.Cooldown > 0) continue;
-
-            var target = _enemies
-                .Where(e => !e.IsDead && Distance(e.X, e.Y, tower.X, tower.Y) < tower.Range)
-                .OrderByDescending(e => e.PathIndex)
-                .FirstOrDefault();
-
-            if (target != null)
-            {
-                tower.Cooldown = tower.FireRate;
-                
-                _projectiles.Add(new Projectile
+                if (dist < 5)
                 {
-                    X = tower.X,
-                    Y = tower.Y,
-                    TargetX = target.X,
-                    TargetY = target.Y,
-                    Damage = tower.Damage
-                });
+                    enemy.PathIndex++;
+                }
+                else
+                {
+                    enemy.X += (dx / dist) * enemy.Speed * dt;
+                    enemy.Y += (dy / dist) * enemy.Speed * dt;
+                }
             }
-        }
 
-        var projectilesToRemove = new List<Projectile>();
-        foreach (var proj in _projectiles.ToList())
-        {
-            if (proj.Hit) continue;
-
-            var dx = proj.TargetX - proj.X;
-            var dy = proj.TargetY - proj.Y;
-            var dist = MathF.Sqrt(dx * dx + dy * dy);
-
-            if (dist < 5)
+            foreach (var e in enemiesToRemove)
             {
-                var enemy = _enemies
-                    .Where(e => !e.IsDead)
-                    .OrderBy(e => Distance(e.X, e.Y, proj.TargetX, proj.TargetY))
+                _enemies.Remove(e);
+            }
+
+            foreach (var tower in _towers)
+            {
+                tower.Cooldown -= dt;
+                if (tower.Cooldown > 0) continue;
+
+                var target = _enemies
+                    .Where(e => !e.IsDead && Distance(e.X, e.Y, tower.X, tower.Y) < tower.Range)
+                    .OrderByDescending(e => e.PathIndex)
                     .FirstOrDefault();
 
-                if (enemy != null && Distance(enemy.X, enemy.Y, proj.TargetX, proj.TargetY) < 30)
+                if (target != null)
                 {
-                    enemy.HP -= proj.Damage;
-                    if (enemy.IsDead)
+                    tower.Cooldown = tower.FireRate;
+
+                    _projectiles.Add(new Projectile
                     {
-                        _gold += 10 + _currentWave * 2;
-                    }
+                        X = tower.X,
+                        Y = tower.Y,
+                        TargetX = target.X,
+                        TargetY = target.Y,
+                        Damage = tower.Damage
+                    });
                 }
-
-                proj.Hit = true;
-                projectilesToRemove.Add(proj);
             }
-            else
+
+            var projectilesToRemove = new List<Projectile>();
+            foreach (var proj in _projectiles.ToList())
             {
-                proj.X += (dx / dist) * proj.Speed * dt;
-                proj.Y += (dy / dist) * proj.Speed * dt;
+                if (proj.Hit) continue;
+
+                var dx = proj.TargetX - proj.X;
+                var dy = proj.TargetY - proj.Y;
+                var dist = MathF.Sqrt(dx * dx + dy * dy);
+
+                if (dist < 5)
+                {
+                    var enemy = _enemies
+                        .Where(e => !e.IsDead)
+                        .OrderBy(e => Distance(e.X, e.Y, proj.TargetX, proj.TargetY))
+                        .FirstOrDefault();
+
+                    if (enemy != null && Distance(enemy.X, enemy.Y, proj.TargetX, proj.TargetY) < 30)
+                    {
+                        enemy.HP -= proj.Damage;
+                        if (enemy.IsDead)
+                        {
+                            var goldReward = 10 + _currentWave * 2;
+                            _gold += goldReward;
+                            _totalGoldEarned += goldReward;
+                            _totalEnemiesKilled++;
+                        }
+                    }
+
+                    proj.Hit = true;
+                    projectilesToRemove.Add(proj);
+                }
+                else
+                {
+                    proj.X += (dx / dist) * proj.Speed * dt;
+                    proj.Y += (dy / dist) * proj.Speed * dt;
+                }
             }
+
+            foreach (var p in projectilesToRemove)
+            {
+                _projectiles.Remove(p);
+            }
+
+            _enemies.RemoveAll(e => e.IsDead);
         }
 
-        foreach (var p in projectilesToRemove)
-        {
-            _projectiles.Remove(p);
-        }
-
-        _enemies.RemoveAll(e => e.IsDead);
-
-        if (_waveActive && _enemies.Count == 0)
-        {
-            _waveActive = false;
-        }
-
+        await InvokeAsync(StateHasChanged);
         await RenderGame();
     }
 
@@ -474,12 +525,25 @@
 
         try
         {
+            List<Point> pathCopy;
+            List<Enemy> enemiesCopy;
+            List<Tower> towersCopy;
+            List<Projectile> projectilesCopy;
+
+            lock (_lockObject)
+            {
+                pathCopy = _path.ToList();
+                enemiesCopy = _enemies.ToList();
+                towersCopy = _towers.ToList();
+                projectilesCopy = _projectiles.ToList();
+            }
+
             var data = new
             {
-                path = _path,
-                enemies = _enemies,
-                towers = _towers,
-                projectiles = _projectiles,
+                path = pathCopy,
+                enemies = enemiesCopy,
+                towers = towersCopy,
+                projectiles = projectilesCopy,
                 selectedTower = _selectedTower
             };
 
@@ -493,15 +557,23 @@
 
     private void RestartGame()
     {
-        _gold = 200;
-        _lives = 20;
-        _currentWave = 0;
-        _waveActive = false;
-        _gameOver = false;
-        _towers.Clear();
-        _enemies.Clear();
-        _projectiles.Clear();
-        _selectedTower = null;
+        lock (_lockObject)
+        {
+            _gold = 200;
+            _lives = 20;
+            _currentWave = 0;
+            _nextWaveNumber = 1;
+            _activeWaves = 0;
+            _gameOver = false;
+            _gameSpeed = 1.0f;
+            _totalGoldEarned = 0;
+            _totalEnemiesKilled = 0;
+            _towers.Clear();
+            _enemies.Clear();
+            _projectiles.Clear();
+            _selectedTower = null;
+        }
+        StateHasChanged();
     }
 
     public void Dispose()
