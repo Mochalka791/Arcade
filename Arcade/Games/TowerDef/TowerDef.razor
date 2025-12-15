@@ -6,111 +6,152 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<div class="tower-defense-fullscreen">
+<div class="tower-defense-performance">
     <div class="top-bar">
-        <div class="game-title">
-            <h1>🏰 Tower Defense</h1>
+        <div class="game-title">🏰 Tower Defense</div>
+        <div class="stats-compact">
+            <span class="stat">💰 @_gold</span>
+            <span class="stat">❤️ @_lives</span>
+            <span class="stat">🌊 Wave @_currentWave</span>
+            <span class="stat">👹 @_enemies.Count</span>
+            <span class="stat">💀 @_totalEnemiesKilled</span>
         </div>
-
-        <div class="stats-bar">
-            <div class="stat gold">
-                <span class="icon">💰</span>
-                <span class="value">@_gold</span>
-            </div>
-            <div class="stat lives">
-                <span class="icon">❤️</span>
-                <span class="value">@_lives</span>
-            </div>
-            <div class="stat wave">
-                <span class="icon">🌊</span>
-                <span class="value">Wave @_currentWave</span>
-            </div>
-            <div class="stat enemies">
-                <span class="icon">👹</span>
-                <span class="value">@_enemies.Count</span>
-            </div>
-            <button class="speed-btn @(_gameSpeed == 2.0f ? "active" : "")"
-                    @onclick="ToggleSpeed">
-                ⚡ x@_gameSpeed.ToString("0.0")
-            </button>
-        </div>
+        <button class="btn-primary" @onclick="StartNextWave" disabled="@(_gameOver || _isPaused || _activeWaves > 0)">
+            ▶️ Wave @(_nextWaveNumber)
+        </button>
+        <button class="btn-toggle @(_autoWave ? "active" : "")" @onclick="ToggleAutoWave">
+            🔁 Auto
+        </button>
+        <button class="btn-toggle @(_showTowerRanges ? "active" : "")" @onclick="ToggleTowerRanges">
+            📡 Range
+        </button>
+        <button class="btn-small" @onclick="TogglePause">@(_isPaused ? "▶️" : "⏸️")</button>
+        <button class="btn-small" @onclick="ToggleSpeed">⚡ x@_gameSpeed.ToString("0.0")</button>
     </div>
 
-    <div class="game-area">
-        <canvas id="gameCanvas"></canvas>
-
-        <div class="tower-menu">
-            <div class="menu-header">
-                <h3>🔨 Türme</h3>
-                <button class="toggle-menu" @onclick="ToggleMenu">
-                    @(_menuOpen ? "✕" : "☰")
-                </button>
+    <div class="game-layout">
+        <div class="side-panel left-panel">
+            <div class="panel-header">
+                <h3>🔧 Upgrade</h3>
             </div>
+            @if (_selectedTowerForUpgrade != null)
+            {
+                <div class="upgrade-content">
+                    <div class="tower-icon-large">@GetTowerEmoji(_selectedTowerForUpgrade.Type)</div>
+                    <h4>@GetTowerName(_selectedTowerForUpgrade.Type)</h4>
 
-            <div class="tower-list @(_menuOpen ? "open" : "")">
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <span>Level</span>
+                            <strong>@_selectedTowerForUpgrade.Level</strong>
+                        </div>
+                        <div class="stat-item">
+                            <span>Damage</span>
+                            <strong>@((int)(_selectedTowerForUpgrade.Damage * (1 + (_selectedTowerForUpgrade.Level - 1) * 0.5f)))</strong>
+                        </div>
+                        <div class="stat-item">
+                            <span>Range</span>
+                            <strong>@((int)(_selectedTowerForUpgrade.Range * (1 + (_selectedTowerForUpgrade.Level - 1) * 0.15f)))</strong>
+                        </div>
+                        <div class="stat-item">
+                            <span>Rate</span>
+                            <strong>@_selectedTowerForUpgrade.FireRate.ToString("0.0")/s</strong>
+                        </div>
+                    </div>
+
+                    <button class="btn-upgrade" @onclick="UpgradeTower"
+                            disabled="@(_gold < GetUpgradeCost(_selectedTowerForUpgrade))">
+                        ⬆️ Upgrade - 💰 @GetUpgradeCost(_selectedTowerForUpgrade)
+                    </button>
+                    <button class="btn-sell" @onclick="SellTower">
+                        💸 Sell - 💰 @GetSellValue(_selectedTowerForUpgrade)
+                    </button>
+                    <button class="btn-close" @onclick="CloseUpgradePanel">
+                        ✕ Close
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <p>👆 Click on a tower to upgrade</p>
+                </div>
+            }
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <div class="side-panel right-panel">
+            <div class="panel-header">
+                <h3>🛒 Towers</h3>
+            </div>
+            <div class="tower-shop">
                 @foreach (var towerInfo in _towerInfos)
                 {
-                    <div class="tower-card @(_selectedTower == towerInfo.Type ? "selected" : "")"
+                    <div class="tower-shop-card @(_selectedTower == towerInfo.Type ? "selected" : "") @(_gold < towerInfo.Cost ? "disabled" : "")"
                          @onclick="() => SelectTower(towerInfo.Type)">
-                        <div class="tower-emoji">@towerInfo.Emoji</div>
-                        <div class="tower-details">
+                        <div class="tower-shop-icon">@towerInfo.Emoji</div>
+                        <div class="tower-shop-info">
                             <strong>@towerInfo.Name</strong>
-                            <div class="tower-stats">
+                            <div class="tower-shop-stats">
                                 <span>💰 @towerInfo.Cost</span>
                                 <span>🎯 @towerInfo.Range</span>
                                 <span>⚔️ @towerInfo.Damage</span>
                             </div>
+                            <small>@towerInfo.Description</small>
                         </div>
-                    </div>
-                }
-
-                <button class="start-wave-btn" @onclick="StartNextWave" disabled="@_gameOver">
-                    <span>▶️ Wave @(_nextWaveNumber) starten</span>
-                </button>
-
-                <div class="wave-info">
-                    <p>Aktive Waves: <strong>@_activeWaves</strong></p>
-                </div>
-
-                @if (_selectedTowerForUpgrade != null)
-                {
-                    <div class="upgrade-panel">
-                        <h4>🔧 Upgrade</h4>
-                        <p>Level: @_selectedTowerForUpgrade.Level</p>
-                        <button @onclick="UpgradeTower" disabled="@(_gold < GetUpgradeCost(_selectedTowerForUpgrade))">
-                            ⬆️ Upgrade (💰 @GetUpgradeCost(_selectedTowerForUpgrade))
-                        </button>
-                        <button @onclick="SellTower">
-                            💸 Verkaufen (💰 @GetSellValue(_selectedTowerForUpgrade))
-                        </button>
                     </div>
                 }
             </div>
         </div>
-
-        @if (_gameOver)
-        {
-            <div class="game-over-overlay">
-                <div class="game-over-box">
-                    <h1>💀 Game Over</h1>
-                    <div class="final-stats">
-                        <p>Höchste Wave: <strong>@_currentWave</strong></p>
-                        <p>Gold verdient: <strong>@_totalGoldEarned</strong></p>
-                        <p>Enemies besiegt: <strong>@_totalEnemiesKilled</strong></p>
-                    </div>
-                    <button class="restart-btn" @onclick="RestartGame">
-                        🔄 Nochmal spielen
-                    </button>
-                </div>
-            </div>
-        }
     </div>
+
+    @if (_bossWarning > 0)
+    {
+        <div class="boss-warning">
+            <div class="boss-warning-content">
+                <h1>⚠️ BOSS INCOMING ⚠️</h1>
+                <div class="boss-countdown">@_bossWarning</div>
+            </div>
+        </div>
+    }
+
+    @if (_isPaused && !_gameOver)
+    {
+        <div class="pause-overlay">
+            <div class="pause-box">
+                <h1>⏸️ PAUSED</h1>
+                <button class="resume-btn" @onclick="TogglePause">
+                    ▶️ Resume
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (_gameOver)
+    {
+        <div class="game-over-overlay">
+            <div class="game-over-box">
+                <h1>💀 Game Over</h1>
+                <div class="final-stats">
+                    <p>Wave: <strong>@_currentWave</strong></p>
+                    <p>Gold: <strong>@_totalGoldEarned</strong></p>
+                    <p>Kills: <strong>@_totalEnemiesKilled</strong></p>
+                </div>
+                <button class="btn-restart" @onclick="RestartGame">🔄 Restart</button>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
     private DotNetObjectReference<TowerDef>? _dotNetRef;
     private bool _isRendered = false;
-    private bool _menuOpen = true;
+    private bool _isPaused = false;
+    private bool _showTowerRanges = false;
+    private bool _autoWave = false;
 
     private int _gold = 250;
     private int _lives = 20;
@@ -119,6 +160,7 @@
     private int _activeWaves = 0;
     private bool _gameOver = false;
     private float _gameSpeed = 1.0f;
+    private int _bossWarning = 0;
 
     private int _totalGoldEarned = 0;
     private int _totalEnemiesKilled = 0;
@@ -129,20 +171,20 @@
     private List<Enemy> _enemies = new();
     private List<Projectile> _projectiles = new();
     private List<Effect> _effects = new();
-    private List<Point> _path = new();
+    private List<List<Point>> _paths = new();
 
     private System.Threading.Timer? _gameTimer;
+    private System.Threading.Timer? _bossWarningTimer;
     private readonly object _lockObject = new();
 
-    // Tower Infos für UI
     private List<TowerInfo> _towerInfos = new()
     {
-        new() { Type = TowerType.Basic, Name = "Basis", Emoji = "🗼", Cost = 50, Range = 100, Damage = 10 },
-        new() { Type = TowerType.Sniper, Name = "Sniper", Emoji = "🎯", Cost = 100, Range = 200, Damage = 50 },
-        new() { Type = TowerType.Cannon, Name = "Kanone", Emoji = "💥", Cost = 150, Range = 80, Damage = 100 },
-        new() { Type = TowerType.Freeze, Name = "Freeze", Emoji = "❄️", Cost = 120, Range = 90, Damage = 5 },
-        new() { Type = TowerType.Poison, Name = "Gift", Emoji = "☠️", Cost = 110, Range = 100, Damage = 3 },
-        new() { Type = TowerType.Lightning, Name = "Blitz", Emoji = "⚡", Cost = 180, Range = 120, Damage = 40 }
+        new() { Type = TowerType.Basic, Name = "Soldat", Emoji = "🗼", Cost = 50, Range = 100, Damage = 10, Description = "Solider Allrounder" },
+        new() { Type = TowerType.Sniper, Name = "Sniper", Emoji = "🎯", Cost = 100, Range = 200, Damage = 50, Description = "Lange Reichweite" },
+        new() { Type = TowerType.Cannon, Name = "Kanone", Emoji = "💥", Cost = 150, Range = 80, Damage = 100, Description = "Hoher Schaden" },
+        new() { Type = TowerType.Freeze, Name = "Frost", Emoji = "❄️", Cost = 120, Range = 120, Damage = 5, Description = "AOE Freeze Spell" },
+        new() { Type = TowerType.Poison, Name = "Gift", Emoji = "☠️", Cost = 110, Range = 100, Damage = 3, Description = "DoT Schaden" },
+        new() { Type = TowerType.Lightning, Name = "Blitz", Emoji = "⚡", Cost = 180, Range = 120, Damage = 40, Description = "Chain Lightning" }
     };
 
     enum TowerType { Basic, Sniper, Cannon, Freeze, Poison, Lightning }
@@ -163,6 +205,7 @@
         public int Cost { get; set; }
         public int Range { get; set; }
         public int Damage { get; set; }
+        public string Description { get; set; } = "";
     }
 
     class Enemy
@@ -170,6 +213,7 @@
         public float X { get; set; }
         public float Y { get; set; }
         public int PathIndex { get; set; }
+        public int PathId { get; set; }
         public float BaseSpeed { get; set; } = 50;
         public float Speed => BaseSpeed * SpeedMultiplier;
         public float SpeedMultiplier { get; set; } = 1.0f;
@@ -180,11 +224,8 @@
         public bool IsDead => HP <= 0;
         public bool IsBoss => Type is EnemyType.BossBrute or EnemyType.BossMage or EnemyType.BossSummoner;
 
-        // Summoner
         public float SummonCooldown { get; set; }
         public int SummonCount { get; set; }
-
-        // Effects
         public List<EnemyEffect> ActiveEffects { get; set; } = new();
     }
 
@@ -208,6 +249,7 @@
         public float Cooldown { get; set; }
         public int Cost { get; set; }
         public int Level { get; set; } = 1;
+        public float SpellCooldown { get; set; }
     }
 
     class Projectile
@@ -220,6 +262,7 @@
         public TowerType TowerType { get; set; }
         public bool Hit { get; set; }
         public int ChainCount { get; set; }
+        public List<Enemy> ChainedEnemies { get; set; } = new();
     }
 
     class Effect
@@ -228,23 +271,44 @@
         public float Y { get; set; }
         public string Type { get; set; } = "";
         public float Duration { get; set; }
+        public float Size { get; set; }
+        public Enemy? Target { get; set; }
     }
 
-    private void ToggleMenu()
+    private void TogglePause()
     {
-        _menuOpen = !_menuOpen;
+        _isPaused = !_isPaused;
         StateHasChanged();
     }
 
     private void ToggleSpeed()
     {
-        _gameSpeed = _gameSpeed == 1.0f ? 2.0f : 1.0f;
+        if (_isPaused) return;
+        _gameSpeed = _gameSpeed switch
+        {
+            1.0f => 2.0f,
+            2.0f => 3.0f,
+            3.0f => 4.0f,
+            _ => 1.0f
+        };
+        StateHasChanged();
+    }
+
+    private void ToggleTowerRanges()
+    {
+        _showTowerRanges = !_showTowerRanges;
+        StateHasChanged();
+    }
+
+    private void ToggleAutoWave()
+    {
+        _autoWave = !_autoWave;
         StateHasChanged();
     }
 
     protected override void OnInitialized()
     {
-        InitializePath();
+        InitializePaths();
         _dotNetRef = DotNetObjectReference.Create(this);
     }
 
@@ -274,20 +338,21 @@
     [JSInvokable]
     public async Task OnCanvasClick(float x, float y)
     {
-        if (_gameOver) return;
+        if (_gameOver || _isPaused) return;
 
-        // Check if clicking on existing tower for upgrade
         var clickedTower = _towers.FirstOrDefault(t =>
-            Distance(t.X, t.Y, x, y) < 25);
+            Distance(t.X, t.Y, x, y) < 40);
 
         if (clickedTower != null)
         {
             _selectedTowerForUpgrade = clickedTower;
+            _selectedTower = null;
             await InvokeAsync(StateHasChanged);
             return;
         }
 
-        // Place new tower
+        _selectedTowerForUpgrade = null;
+
         if (_selectedTower == null) return;
 
         var towerInfo = _towerInfos.First(t => t.Type == _selectedTower.Value);
@@ -300,30 +365,80 @@
                 _gold -= tower.Cost;
                 _towers.Add(tower);
             }
-            _selectedTower = null;
-            _selectedTowerForUpgrade = null;
 
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private void InitializePath()
+    private void InitializePaths()
     {
-        _path = new List<Point>
+        var commonPath = new List<Point>
         {
-            new() { X = 0, Y = 300 },
-            new() { X = 200, Y = 300 },
-            new() { X = 200, Y = 150 },
-            new() { X = 400, Y = 150 },
-            new() { X = 400, Y = 450 },
-            new() { X = 600, Y = 450 },
-            new() { X = 600, Y = 200 },
-            new() { X = 800, Y = 200 }
+            new() { X = 800, Y = 450 },
+            new() { X = 1000, Y = 450 },
+            new() { X = 1000, Y = 300 },
+            new() { X = 1200, Y = 300 },
+            new() { X = 1200, Y = 450 },
+            new() { X = 1500, Y = 450 }
         };
+
+        _paths = new List<List<Point>>
+        {
+            new List<Point>
+            {
+                new() { X = 0, Y = 200 },
+                new() { X = 300, Y = 200 },
+                new() { X = 300, Y = 450 },
+                new() { X = 800, Y = 450 }
+            }.Concat(commonPath).ToList(),
+
+            new List<Point>
+            {
+                new() { X = 0, Y = 700 },
+                new() { X = 400, Y = 700 },
+                new() { X = 400, Y = 450 },
+                new() { X = 800, Y = 450 }
+            }.Concat(commonPath).ToList(),
+
+            new List<Point>
+            {
+                new() { X = 600, Y = 0 },
+                new() { X = 600, Y = 200 },
+                new() { X = 800, Y = 200 },
+                new() { X = 800, Y = 450 }
+            }.Concat(commonPath).ToList(),
+
+            new List<Point>
+            {
+                new() { X = 1600, Y = 200 },
+                new() { X = 1300, Y = 200 },
+                new() { X = 1300, Y = 450 },
+                new() { X = 800, Y = 450 }
+            }.Concat(commonPath).ToList()
+        };
+    }
+
+    private List<int> GetActivePathsForWave(int wave)
+    {
+        if (wave < 15) return new List<int> { 0 };
+        if (wave < 25) return new List<int> { 0, 1 };
+        if (wave < 30) return new List<int> { 0, 1, 2 };
+        return new List<int> { 0, 1, 2, 3 };
+    }
+
+    private string GetTowerName(TowerType type)
+    {
+        return _towerInfos.First(t => t.Type == type).Name;
+    }
+
+    private string GetTowerEmoji(TowerType type)
+    {
+        return _towerInfos.First(t => t.Type == type).Emoji;
     }
 
     private void SelectTower(TowerType type)
     {
+        if (_gold < _towerInfos.First(t => t.Type == type).Cost) return;
         _selectedTower = type;
         _selectedTowerForUpgrade = null;
         StateHasChanged();
@@ -333,66 +448,12 @@
     {
         return type switch
         {
-            TowerType.Basic => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 100,
-                FireRate = 1f,
-                Damage = 10,
-                Cost = cost
-            },
-            TowerType.Sniper => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 200,
-                FireRate = 2f,
-                Damage = 50,
-                Cost = cost
-            },
-            TowerType.Cannon => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 80,
-                FireRate = 0.5f,
-                Damage = 100,
-                Cost = cost
-            },
-            TowerType.Freeze => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 90,
-                FireRate = 1.5f,
-                Damage = 5,
-                Cost = cost
-            },
-            TowerType.Poison => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 100,
-                FireRate = 1f,
-                Damage = 3,
-                Cost = cost
-            },
-            TowerType.Lightning => new Tower
-            {
-                X = x,
-                Y = y,
-                Type = type,
-                Range = 120,
-                FireRate = 1.2f,
-                Damage = 40,
-                Cost = cost
-            },
+            TowerType.Basic => new Tower { X = x, Y = y, Type = type, Range = 100, FireRate = 1f, Damage = 10, Cost = cost },
+            TowerType.Sniper => new Tower { X = x, Y = y, Type = type, Range = 200, FireRate = 2f, Damage = 50, Cost = cost },
+            TowerType.Cannon => new Tower { X = x, Y = y, Type = type, Range = 80, FireRate = 0.5f, Damage = 100, Cost = cost },
+            TowerType.Freeze => new Tower { X = x, Y = y, Type = type, Range = 120, FireRate = 1.5f, Damage = 5, Cost = cost, SpellCooldown = 5f },
+            TowerType.Poison => new Tower { X = x, Y = y, Type = type, Range = 100, FireRate = 1f, Damage = 3, Cost = cost },
+            TowerType.Lightning => new Tower { X = x, Y = y, Type = type, Range = 120, FireRate = 1.2f, Damage = 40, Cost = cost },
             _ => throw new ArgumentException()
         };
     }
@@ -400,13 +461,15 @@
     private bool IsOnPath(float x, float y)
     {
         const float pathWidth = 50;
-        for (int i = 0; i < _path.Count - 1; i++)
+        foreach (var path in _paths)
         {
-            var p1 = _path[i];
-            var p2 = _path[i + 1];
-
-            var dist = DistanceToSegment(x, y, p1.X, p1.Y, p2.X, p2.Y);
-            if (dist < pathWidth) return true;
+            for (int i = 0; i < path.Count - 1; i++)
+            {
+                var p1 = path[i];
+                var p2 = path[i + 1];
+                var dist = DistanceToSegment(x, y, p1.X, p1.Y, p2.X, p2.Y);
+                if (dist < pathWidth) return true;
+            }
         }
         return false;
     }
@@ -427,7 +490,7 @@
 
     private void StartNextWave()
     {
-        if (_gameOver) return;
+        if (_gameOver || _isPaused) return;
 
         var waveNumber = _nextWaveNumber;
         _nextWaveNumber++;
@@ -440,6 +503,21 @@
         _activeWaves++;
         StateHasChanged();
 
+        if (waveNumber % 10 == 0)
+        {
+            _bossWarning = 5;
+            _bossWarningTimer?.Dispose();
+            _bossWarningTimer = new System.Threading.Timer(_ =>
+            {
+                _bossWarning--;
+                if (_bossWarning <= 0)
+                {
+                    _bossWarningTimer?.Dispose();
+                }
+                _ = InvokeAsync(StateHasChanged);
+            }, null, 1000, 1000);
+        }
+
         _ = Task.Run(async () => await SpawnWave(waveNumber));
     }
 
@@ -448,13 +526,20 @@
         try
         {
             var config = GetWaveConfig(wave);
+            var activePaths = GetActivePathsForWave(wave);
+
+            if (wave % 10 == 0)
+            {
+                await Task.Delay(5000);
+            }
 
             for (int i = 0; i < config.EnemyCount; i++)
             {
                 if (_gameOver) break;
 
                 var enemyType = SelectEnemyType(wave, i, config);
-                var enemy = CreateEnemy(enemyType, wave);
+                var pathId = activePaths[Random.Shared.Next(activePaths.Count)];
+                var enemy = CreateEnemy(enemyType, wave, pathId);
 
                 lock (_lockObject)
                 {
@@ -482,7 +567,6 @@
 
     private EnemyType SelectEnemyType(int wave, int index, (int EnemyCount, int SpawnDelay, float Difficulty) config)
     {
-        // Boss every 10 waves
         if (wave % 10 == 0 && index == config.EnemyCount - 1)
         {
             return wave % 30 == 0 ? EnemyType.BossSummoner :
@@ -490,29 +574,29 @@
                    EnemyType.BossBrute;
         }
 
-        // Summoner chance increases with wave
         if (wave > 5 && Random.Shared.Next(100) < wave * 2)
         {
             return EnemyType.Summoner;
         }
 
-        // Mix of enemy types based on wave
         var roll = Random.Shared.Next(100);
         if (roll < 30) return EnemyType.Fast;
         if (roll < 60) return EnemyType.Normal;
         return EnemyType.Tank;
     }
 
-    private Enemy CreateEnemy(EnemyType type, int wave)
+    private Enemy CreateEnemy(EnemyType type, int wave, int pathId)
     {
         var baseDifficulty = 1 + (wave * 0.15f);
+        var startPos = _paths[pathId][0];
 
         return type switch
         {
             EnemyType.Normal => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 50,
                 HP = (int)(100 * baseDifficulty),
@@ -521,8 +605,9 @@
             },
             EnemyType.Fast => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 80,
                 HP = (int)(60 * baseDifficulty),
@@ -531,8 +616,9 @@
             },
             EnemyType.Tank => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 30,
                 HP = (int)(300 * baseDifficulty),
@@ -541,8 +627,9 @@
             },
             EnemyType.Summoner => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 40,
                 HP = (int)(150 * baseDifficulty),
@@ -553,33 +640,36 @@
             },
             EnemyType.BossBrute => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 25,
-                HP = (int)(1000 * baseDifficulty),
-                MaxHP = (int)(1000 * baseDifficulty),
-                Size = 30
+                HP = (int)(1500 * baseDifficulty),
+                MaxHP = (int)(1500 * baseDifficulty),
+                Size = 35
             },
             EnemyType.BossMage => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 35,
-                HP = (int)(800 * baseDifficulty),
-                MaxHP = (int)(800 * baseDifficulty),
-                Size = 28
+                HP = (int)(1200 * baseDifficulty),
+                MaxHP = (int)(1200 * baseDifficulty),
+                Size = 32
             },
             EnemyType.BossSummoner => new Enemy
             {
-                X = _path[0].X,
-                Y = _path[0].Y,
+                X = startPos.X,
+                Y = startPos.Y,
+                PathId = pathId,
                 Type = type,
                 BaseSpeed = 30,
-                HP = (int)(900 * baseDifficulty),
-                MaxHP = (int)(900 * baseDifficulty),
-                Size = 28,
+                HP = (int)(1300 * baseDifficulty),
+                MaxHP = (int)(1300 * baseDifficulty),
+                Size = 33,
                 SummonCooldown = 3f,
                 SummonCount = 5
             },
@@ -589,7 +679,7 @@
 
     private async void GameLoop()
     {
-        if (_gameOver || !_isRendered) return;
+        if (_gameOver || !_isRendered || _isPaused) return;
 
         var dt = 0.016f * _gameSpeed;
 
@@ -599,6 +689,16 @@
             UpdateTowers(dt);
             UpdateProjectiles(dt);
             UpdateEffects(dt);
+        }
+
+        // Auto-Wave: Nur wenn aktiviert UND keine Welle läuft UND keine Gegner mehr da
+        if (_autoWave && _activeWaves == 0 && _enemies.Count == 0)
+        {
+            await Task.Delay(2000);
+            if (_autoWave && !_gameOver && !_isPaused && _activeWaves == 0 && _enemies.Count == 0)
+            {
+                StartNextWave();
+            }
         }
 
         await InvokeAsync(StateHasChanged);
@@ -613,10 +713,8 @@
         {
             if (enemy.IsDead) continue;
 
-            // Update effects
             UpdateEnemyEffects(enemy, dt);
 
-            // Summoner ability
             if (enemy.Type is EnemyType.Summoner or EnemyType.BossSummoner)
             {
                 enemy.SummonCooldown -= dt;
@@ -628,8 +726,8 @@
                 }
             }
 
-            // Movement
-            if (enemy.PathIndex >= _path.Count - 1)
+            var path = _paths[enemy.PathId];
+            if (enemy.PathIndex >= path.Count - 1)
             {
                 enemiesToRemove.Add(enemy);
                 _lives--;
@@ -641,7 +739,7 @@
                 continue;
             }
 
-            var target = _path[enemy.PathIndex + 1];
+            var target = path[enemy.PathIndex + 1];
             var dx = target.X - enemy.X;
             var dy = target.Y - enemy.Y;
             var dist = MathF.Sqrt(dx * dx + dy * dy);
@@ -712,6 +810,7 @@
             X = summoner.X + Random.Shared.Next(-20, 20),
             Y = summoner.Y + Random.Shared.Next(-20, 20),
             PathIndex = summoner.PathIndex,
+            PathId = summoner.PathId,
             Type = EnemyType.Normal,
             BaseSpeed = 60,
             HP = 30,
@@ -726,7 +825,8 @@
             X = summoner.X,
             Y = summoner.Y,
             Type = "summon",
-            Duration = 0.5f
+            Duration = 0.5f,
+            Size = 40
         });
     }
 
@@ -735,6 +835,17 @@
         foreach (var tower in _towers)
         {
             tower.Cooldown -= dt;
+
+            if (tower.Type == TowerType.Freeze)
+            {
+                tower.SpellCooldown -= dt;
+                if (tower.SpellCooldown <= 0)
+                {
+                    CastFreezeSpell(tower);
+                    tower.SpellCooldown = 5f / (1 + (tower.Level - 1) * 0.2f);
+                }
+            }
+
             if (tower.Cooldown > 0) continue;
 
             var target = FindTarget(tower);
@@ -750,11 +861,43 @@
                     Target = target,
                     Damage = (int)(tower.Damage * (1 + (tower.Level - 1) * 0.5f)),
                     TowerType = tower.Type,
-                    ChainCount = tower.Type == TowerType.Lightning && tower.Level >= 2 ? 2 : 0
+                    ChainCount = tower.Type == TowerType.Lightning ? 3 + tower.Level : 0
                 };
+
+                if (tower.Type == TowerType.Lightning)
+                {
+                    projectile.ChainedEnemies.Add(target);
+                }
 
                 _projectiles.Add(projectile);
             }
+        }
+    }
+
+    private void CastFreezeSpell(Tower tower)
+    {
+        var spellRange = tower.Range * 1.5f * (1 + (tower.Level - 1) * 0.2f);
+        var affected = 0;
+
+        foreach (var enemy in _enemies.Where(e => !e.IsDead))
+        {
+            if (Distance(enemy.X, enemy.Y, tower.X, tower.Y) < spellRange)
+            {
+                ApplyEffect(enemy, EffectType.Slow, 3f, 0.7f);
+                affected++;
+            }
+        }
+
+        if (affected > 0)
+        {
+            _effects.Add(new Effect
+            {
+                X = tower.X,
+                Y = tower.Y,
+                Type = "freeze_spell",
+                Duration = 1f,
+                Size = spellRange
+            });
         }
     }
 
@@ -789,25 +932,39 @@
                 proj.Hit = true;
                 projectilesToRemove.Add(proj);
 
-                // Chain lightning
                 if (proj.TowerType == TowerType.Lightning && proj.ChainCount > 0)
                 {
                     var nextTarget = _enemies
-                        .Where(e => !e.IsDead && e != proj.Target && Distance(e.X, e.Y, proj.Target.X, proj.Target.Y) < 100)
+                        .Where(e => !e.IsDead &&
+                                   !proj.ChainedEnemies.Contains(e) &&
+                                   Distance(e.X, e.Y, proj.Target.X, proj.Target.Y) < 150)
                         .OrderBy(e => Distance(e.X, e.Y, proj.Target.X, proj.Target.Y))
                         .FirstOrDefault();
 
                     if (nextTarget != null)
                     {
+                        _effects.Add(new Effect
+                        {
+                            X = proj.Target.X,
+                            Y = proj.Target.Y,
+                            Type = "lightning_chain",
+                            Duration = 0.3f,
+                            Size = 10,
+                            Target = nextTarget
+                        });
+
+                        var chainedEnemies = new List<Enemy>(proj.ChainedEnemies) { nextTarget };
+
                         _projectiles.Add(new Projectile
                         {
                             X = proj.Target.X,
                             Y = proj.Target.Y,
                             Target = nextTarget,
-                            Damage = (int)(proj.Damage * 0.7f),
+                            Damage = (int)(proj.Damage * 0.8f),
                             TowerType = proj.TowerType,
                             ChainCount = proj.ChainCount - 1,
-                            Speed = proj.Speed
+                            Speed = proj.Speed * 1.5f,
+                            ChainedEnemies = chainedEnemies
                         });
                     }
                 }
@@ -834,10 +991,10 @@
             X = enemy.X,
             Y = enemy.Y,
             Type = "hit",
-            Duration = 0.3f
+            Duration = 0.3f,
+            Size = 20
         });
 
-        // Apply tower effects
         switch (proj.TowerType)
         {
             case TowerType.Freeze:
@@ -861,7 +1018,8 @@
                 X = enemy.X,
                 Y = enemy.Y,
                 Type = "death",
-                Duration = 0.5f
+                Duration = 0.5f,
+                Size = enemy.Size
             });
         }
     }
@@ -895,9 +1053,9 @@
             EnemyType.Fast => 8 + _currentWave * 2,
             EnemyType.Tank => 20 + _currentWave * 3,
             EnemyType.Summoner => 25 + _currentWave * 3,
-            EnemyType.BossBrute => 100 + _currentWave * 10,
-            EnemyType.BossMage => 120 + _currentWave * 10,
-            EnemyType.BossSummoner => 150 + _currentWave * 10,
+            EnemyType.BossBrute => 150 + _currentWave * 15,
+            EnemyType.BossMage => 180 + _currentWave * 15,
+            EnemyType.BossSummoner => 200 + _currentWave * 15,
             _ => 10
         };
     }
@@ -917,13 +1075,11 @@
     private void UpgradeTower()
     {
         if (_selectedTowerForUpgrade == null) return;
-
         var cost = GetUpgradeCost(_selectedTowerForUpgrade);
         if (_gold >= cost)
         {
             _gold -= cost;
             _selectedTowerForUpgrade.Level++;
-            _selectedTowerForUpgrade = null;
             StateHasChanged();
         }
     }
@@ -931,10 +1087,15 @@
     private void SellTower()
     {
         if (_selectedTowerForUpgrade == null) return;
-
         var value = GetSellValue(_selectedTowerForUpgrade);
         _gold += value;
         _towers.Remove(_selectedTowerForUpgrade);
+        _selectedTowerForUpgrade = null;
+        StateHasChanged();
+    }
+
+    private void CloseUpgradePanel()
+    {
         _selectedTowerForUpgrade = null;
         StateHasChanged();
     }
@@ -967,7 +1128,7 @@
 
         try
         {
-            List<Point> pathCopy;
+            List<List<Point>> pathsCopy;
             List<Enemy> enemiesCopy;
             List<Tower> towersCopy;
             List<Projectile> projectilesCopy;
@@ -975,7 +1136,7 @@
 
             lock (_lockObject)
             {
-                pathCopy = _path.ToList();
+                pathsCopy = _paths.Select(p => p.ToList()).ToList();
                 enemiesCopy = _enemies.Select(e => new Enemy
                 {
                     X = e.X,
@@ -1000,12 +1161,28 @@
                     Y = p.Y,
                     TowerType = p.TowerType
                 }).ToList();
-                effectsCopy = _effects.ToList();
+                effectsCopy = _effects.Select(e => new Effect
+                {
+                    X = e.X,
+                    Y = e.Y,
+                    Type = e.Type,
+                    Duration = e.Duration,
+                    Size = e.Size,
+                    Target = e.Target != null ? new Enemy
+                    {
+                        X = e.Target.X,
+                        Y = e.Target.Y
+                    } : null
+                }).ToList();
             }
+
+            var activePaths = GetActivePathsForWave(_currentWave);
 
             var data = new
             {
-                path = pathCopy,
+                paths = pathsCopy,
+                activePaths = activePaths,
+                currentWave = _currentWave,
                 enemies = enemiesCopy.Select(e => new
                 {
                     x = e.X,
@@ -1032,15 +1209,23 @@
                     y = p.Y,
                     type = (int)p.TowerType
                 }),
-                effects = effectsCopy,
-                selectedTower = _selectedTower
+                effects = effectsCopy.Select(e => new
+                {
+                    x = e.X,
+                    y = e.Y,
+                    type = e.Type,
+                    duration = e.Duration,
+                    size = e.Size,
+                    target = e.Target != null ? new { x = e.Target.X, y = e.Target.Y } : null
+                }),
+                selectedTower = _selectedTower,
+                showTowerRanges = _showTowerRanges
             };
 
             await JS.InvokeVoidAsync("towerDefense.render", data);
         }
         catch (Exception)
         {
-            // Ignore JS errors during navigation
         }
     }
 
@@ -1055,8 +1240,12 @@
             _activeWaves = 0;
             _gameOver = false;
             _gameSpeed = 1.0f;
+            _isPaused = false;
+            _bossWarning = 0;
             _totalGoldEarned = 0;
             _totalEnemiesKilled = 0;
+            _showTowerRanges = false;
+            _autoWave = false;
             _towers.Clear();
             _enemies.Clear();
             _projectiles.Clear();
@@ -1064,12 +1253,14 @@
             _selectedTower = null;
             _selectedTowerForUpgrade = null;
         }
+        _bossWarningTimer?.Dispose();
         StateHasChanged();
     }
 
     public void Dispose()
     {
         _gameTimer?.Dispose();
+        _bossWarningTimer?.Dispose();
         _dotNetRef?.Dispose();
     }
 }
