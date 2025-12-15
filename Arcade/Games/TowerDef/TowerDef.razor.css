@@ -9,6 +9,7 @@
     color: #fff;
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     overflow: hidden;
+    z-index: 9999;
 }
 
 .top-bar {
