@@ -48,44 +48,21 @@
             </div>
 
             <div class="tower-list @(_menuOpen ? "open" : "")">
-                <div class="tower-card @(_selectedTower == TowerType.Basic ? "selected" : "")"
-                     @onclick="() => SelectTower(TowerType.Basic)">
-                    <div class="tower-emoji">🗼</div>
-                    <div class="tower-details">
-                        <strong>Basis</strong>
-                        <div class="tower-stats">
-                            <span>💰 50</span>
-                            <span>🎯 100</span>
-                            <span>⚔️ 10</span>
+                @foreach (var towerInfo in _towerInfos)
+                {
+                    <div class="tower-card @(_selectedTower == towerInfo.Type ? "selected" : "")"
+                         @onclick="() => SelectTower(towerInfo.Type)">
+                        <div class="tower-emoji">@towerInfo.Emoji</div>
+                        <div class="tower-details">
+                            <strong>@towerInfo.Name</strong>
+                            <div class="tower-stats">
+                                <span>💰 @towerInfo.Cost</span>
+                                <span>🎯 @towerInfo.Range</span>
+                                <span>⚔️ @towerInfo.Damage</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-
-                <div class="tower-card @(_selectedTower == TowerType.Sniper ? "selected" : "")"
-                     @onclick="() => SelectTower(TowerType.Sniper)">
-                    <div class="tower-emoji">🎯</div>
-                    <div class="tower-details">
-                        <strong>Sniper</strong>
-                        <div class="tower-stats">
-                            <span>💰 100</span>
-                            <span>🎯 200</span>
-                            <span>⚔️ 50</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tower-card @(_selectedTower == TowerType.Cannon ? "selected" : "")"
-                     @onclick="() => SelectTower(TowerType.Cannon)">
-                    <div class="tower-emoji">💥</div>
-                    <div class="tower-details">
-                        <strong>Kanone</strong>
-                        <div class="tower-stats">
-                            <span>💰 150</span>
-                            <span>🎯 80</span>
-                            <span>⚔️ 100</span>
-                        </div>
-                    </div>
-                </div>
+                }
 
                 <button class="start-wave-btn" @onclick="StartNextWave" disabled="@_gameOver">
                     <span>▶️ Wave @(_nextWaveNumber) starten</span>
@@ -94,6 +71,20 @@
                 <div class="wave-info">
                     <p>Aktive Waves: <strong>@_activeWaves</strong></p>
                 </div>
+
+                @if (_selectedTowerForUpgrade != null)
+                {
+                    <div class="upgrade-panel">
+                        <h4>🔧 Upgrade</h4>
+                        <p>Level: @_selectedTowerForUpgrade.Level</p>
+                        <button @onclick="UpgradeTower" disabled="@(_gold < GetUpgradeCost(_selectedTowerForUpgrade))">
+                            ⬆️ Upgrade (💰 @GetUpgradeCost(_selectedTowerForUpgrade))
+                        </button>
+                        <button @onclick="SellTower">
+                            💸 Verkaufen (💰 @GetSellValue(_selectedTowerForUpgrade))
+                        </button>
+                    </div>
+                }
             </div>
         </div>
 
@@ -121,7 +112,7 @@
     private bool _isRendered = false;
     private bool _menuOpen = true;
 
-    private int _gold = 200;
+    private int _gold = 250;
     private int _lives = 20;
     private int _currentWave = 0;
     private int _nextWaveNumber = 1;
@@ -133,15 +124,30 @@
     private int _totalEnemiesKilled = 0;
 
     private TowerType? _selectedTower = null;
+    private Tower? _selectedTowerForUpgrade = null;
     private List<Tower> _towers = new();
     private List<Enemy> _enemies = new();
     private List<Projectile> _projectiles = new();
+    private List<Effect> _effects = new();
     private List<Point> _path = new();
 
     private System.Threading.Timer? _gameTimer;
     private readonly object _lockObject = new();
 
-    enum TowerType { Basic, Sniper, Cannon }
+    // Tower Infos für UI
+    private List<TowerInfo> _towerInfos = new()
+    {
+        new() { Type = TowerType.Basic, Name = "Basis", Emoji = "🗼", Cost = 50, Range = 100, Damage = 10 },
+        new() { Type = TowerType.Sniper, Name = "Sniper", Emoji = "🎯", Cost = 100, Range = 200, Damage = 50 },
+        new() { Type = TowerType.Cannon, Name = "Kanone", Emoji = "💥", Cost = 150, Range = 80, Damage = 100 },
+        new() { Type = TowerType.Freeze, Name = "Freeze", Emoji = "❄️", Cost = 120, Range = 90, Damage = 5 },
+        new() { Type = TowerType.Poison, Name = "Gift", Emoji = "☠️", Cost = 110, Range = 100, Damage = 3 },
+        new() { Type = TowerType.Lightning, Name = "Blitz", Emoji = "⚡", Cost = 180, Range = 120, Damage = 40 }
+    };
+
+    enum TowerType { Basic, Sniper, Cannon, Freeze, Poison, Lightning }
+    enum EnemyType { Normal, Fast, Tank, Summoner, BossBrute, BossMage, BossSummoner }
+    enum EffectType { Slow, Poison, Stun }
 
     class Point
     {
@@ -149,16 +155,46 @@
         public float Y { get; set; }
     }
 
+    class TowerInfo
+    {
+        public TowerType Type { get; set; }
+        public string Name { get; set; } = "";
+        public string Emoji { get; set; } = "";
+        public int Cost { get; set; }
+        public int Range { get; set; }
+        public int Damage { get; set; }
+    }
+
     class Enemy
     {
         public float X { get; set; }
         public float Y { get; set; }
         public int PathIndex { get; set; }
-        public float Speed { get; set; } = 50;
+        public float BaseSpeed { get; set; } = 50;
+        public float Speed => BaseSpeed * SpeedMultiplier;
+        public float SpeedMultiplier { get; set; } = 1.0f;
         public int HP { get; set; } = 100;
         public int MaxHP { get; set; } = 100;
         public float Size { get; set; } = 15;
+        public EnemyType Type { get; set; }
         public bool IsDead => HP <= 0;
+        public bool IsBoss => Type is EnemyType.BossBrute or EnemyType.BossMage or EnemyType.BossSummoner;
+
+        // Summoner
+        public float SummonCooldown { get; set; }
+        public int SummonCount { get; set; }
+
+        // Effects
+        public List<EnemyEffect> ActiveEffects { get; set; } = new();
+    }
+
+    class EnemyEffect
+    {
+        public EffectType Type { get; set; }
+        public float Duration { get; set; }
+        public float Intensity { get; set; }
+        public int DamagePerTick { get; set; }
+        public float TickTimer { get; set; }
     }
 
     class Tower
@@ -171,17 +207,27 @@
         public int Damage { get; set; }
         public float Cooldown { get; set; }
         public int Cost { get; set; }
+        public int Level { get; set; } = 1;
     }
 
     class Projectile
     {
         public float X { get; set; }
         public float Y { get; set; }
-        public float TargetX { get; set; }
-        public float TargetY { get; set; }
+        public Enemy? Target { get; set; }
         public float Speed { get; set; } = 300;
         public int Damage { get; set; }
+        public TowerType TowerType { get; set; }
         public bool Hit { get; set; }
+        public int ChainCount { get; set; }
+    }
+
+    class Effect
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public string Type { get; set; } = "";
+        public float Duration { get; set; }
     }
 
     private void ToggleMenu()
@@ -228,12 +274,24 @@
     [JSInvokable]
     public async Task OnCanvasClick(float x, float y)
     {
-        if (_selectedTower == null || _gameOver)
+        if (_gameOver) return;
+
+        // Check if clicking on existing tower for upgrade
+        var clickedTower = _towers.FirstOrDefault(t =>
+            Distance(t.X, t.Y, x, y) < 25);
+
+        if (clickedTower != null)
         {
+            _selectedTowerForUpgrade = clickedTower;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
-        var tower = CreateTower(_selectedTower.Value, x, y);
+        // Place new tower
+        if (_selectedTower == null) return;
+
+        var towerInfo = _towerInfos.First(t => t.Type == _selectedTower.Value);
+        var tower = CreateTower(_selectedTower.Value, x, y, towerInfo.Cost);
 
         if (_gold >= tower.Cost && !IsOnPath(x, y))
         {
@@ -243,6 +301,7 @@
                 _towers.Add(tower);
             }
             _selectedTower = null;
+            _selectedTowerForUpgrade = null;
 
             await InvokeAsync(StateHasChanged);
         }
@@ -266,10 +325,11 @@
     private void SelectTower(TowerType type)
     {
         _selectedTower = type;
+        _selectedTowerForUpgrade = null;
         StateHasChanged();
     }
 
-    private Tower CreateTower(TowerType type, float x, float y)
+    private Tower CreateTower(TowerType type, float x, float y, int cost)
     {
         return type switch
         {
@@ -281,7 +341,7 @@
                 Range = 100,
                 FireRate = 1f,
                 Damage = 10,
-                Cost = 50
+                Cost = cost
             },
             TowerType.Sniper => new Tower
             {
@@ -291,7 +351,7 @@
                 Range = 200,
                 FireRate = 2f,
                 Damage = 50,
-                Cost = 100
+                Cost = cost
             },
             TowerType.Cannon => new Tower
             {
@@ -301,7 +361,37 @@
                 Range = 80,
                 FireRate = 0.5f,
                 Damage = 100,
-                Cost = 150
+                Cost = cost
+            },
+            TowerType.Freeze => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 90,
+                FireRate = 1.5f,
+                Damage = 5,
+                Cost = cost
+            },
+            TowerType.Poison => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 100,
+                FireRate = 1f,
+                Damage = 3,
+                Cost = cost
+            },
+            TowerType.Lightning => new Tower
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Range = 120,
+                FireRate = 1.2f,
+                Damage = 40,
+                Cost = cost
             },
             _ => throw new ArgumentException()
         };
@@ -347,41 +437,31 @@
             _currentWave = waveNumber;
         }
 
-        var enemyCount = 5 + waveNumber * 3;
-        var enemyHP = 50 + waveNumber * 25;
-        var enemySpeed = 30 + waveNumber * 5;
-
         _activeWaves++;
         StateHasChanged();
 
-        _ = Task.Run(async () => await SpawnWaveEnemies(enemyCount, enemyHP, enemySpeed));
+        _ = Task.Run(async () => await SpawnWave(waveNumber));
     }
 
-    private async Task SpawnWaveEnemies(int count, int hp, float speed)
+    private async Task SpawnWave(int wave)
     {
         try
         {
-            for (int i = 0; i < count; i++)
+            var config = GetWaveConfig(wave);
+
+            for (int i = 0; i < config.EnemyCount; i++)
             {
                 if (_gameOver) break;
 
-                var enemy = new Enemy
-                {
-                    X = _path[0].X,
-                    Y = _path[0].Y,
-                    PathIndex = 0,
-                    Speed = speed,
-                    HP = hp,
-                    MaxHP = hp
-                };
+                var enemyType = SelectEnemyType(wave, i, config);
+                var enemy = CreateEnemy(enemyType, wave);
 
                 lock (_lockObject)
                 {
                     _enemies.Add(enemy);
                 }
 
-                var delay = Math.Max(200, 1000 - (_currentWave * 10));
-                await Task.Delay(delay);
+                await Task.Delay(config.SpawnDelay);
             }
         }
         finally
@@ -389,6 +469,122 @@
             _activeWaves--;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private (int EnemyCount, int SpawnDelay, float Difficulty) GetWaveConfig(int wave)
+    {
+        var baseCount = 5 + wave * 3;
+        var spawnDelay = Math.Max(200, 1000 - wave * 15);
+        var difficulty = 1 + (wave * 0.15f);
+
+        return (baseCount, spawnDelay, difficulty);
+    }
+
+    private EnemyType SelectEnemyType(int wave, int index, (int EnemyCount, int SpawnDelay, float Difficulty) config)
+    {
+        // Boss every 10 waves
+        if (wave % 10 == 0 && index == config.EnemyCount - 1)
+        {
+            return wave % 30 == 0 ? EnemyType.BossSummoner :
+                   wave % 20 == 0 ? EnemyType.BossMage :
+                   EnemyType.BossBrute;
+        }
+
+        // Summoner chance increases with wave
+        if (wave > 5 && Random.Shared.Next(100) < wave * 2)
+        {
+            return EnemyType.Summoner;
+        }
+
+        // Mix of enemy types based on wave
+        var roll = Random.Shared.Next(100);
+        if (roll < 30) return EnemyType.Fast;
+        if (roll < 60) return EnemyType.Normal;
+        return EnemyType.Tank;
+    }
+
+    private Enemy CreateEnemy(EnemyType type, int wave)
+    {
+        var baseDifficulty = 1 + (wave * 0.15f);
+
+        return type switch
+        {
+            EnemyType.Normal => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 50,
+                HP = (int)(100 * baseDifficulty),
+                MaxHP = (int)(100 * baseDifficulty),
+                Size = 15
+            },
+            EnemyType.Fast => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 80,
+                HP = (int)(60 * baseDifficulty),
+                MaxHP = (int)(60 * baseDifficulty),
+                Size = 12
+            },
+            EnemyType.Tank => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 30,
+                HP = (int)(300 * baseDifficulty),
+                MaxHP = (int)(300 * baseDifficulty),
+                Size = 20
+            },
+            EnemyType.Summoner => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 40,
+                HP = (int)(150 * baseDifficulty),
+                MaxHP = (int)(150 * baseDifficulty),
+                Size = 16,
+                SummonCooldown = 5f,
+                SummonCount = 3
+            },
+            EnemyType.BossBrute => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 25,
+                HP = (int)(1000 * baseDifficulty),
+                MaxHP = (int)(1000 * baseDifficulty),
+                Size = 30
+            },
+            EnemyType.BossMage => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 35,
+                HP = (int)(800 * baseDifficulty),
+                MaxHP = (int)(800 * baseDifficulty),
+                Size = 28
+            },
+            EnemyType.BossSummoner => new Enemy
+            {
+                X = _path[0].X,
+                Y = _path[0].Y,
+                Type = type,
+                BaseSpeed = 30,
+                HP = (int)(900 * baseDifficulty),
+                MaxHP = (int)(900 * baseDifficulty),
+                Size = 28,
+                SummonCooldown = 3f,
+                SummonCount = 5
+            },
+            _ => throw new ArgumentException()
+        };
     }
 
     private async void GameLoop()
@@ -399,117 +595,363 @@
 
         lock (_lockObject)
         {
-            var enemiesToRemove = new List<Enemy>();
-            foreach (var enemy in _enemies.ToList())
-            {
-                if (enemy.IsDead) continue;
-
-                if (enemy.PathIndex >= _path.Count - 1)
-                {
-                    enemiesToRemove.Add(enemy);
-                    _lives--;
-
-                    if (_lives <= 0)
-                    {
-                        _gameOver = true;
-                    }
-                    continue;
-                }
-
-                var target = _path[enemy.PathIndex + 1];
-                var dx = target.X - enemy.X;
-                var dy = target.Y - enemy.Y;
-                var dist = MathF.Sqrt(dx * dx + dy * dy);
-
-                if (dist < 5)
-                {
-                    enemy.PathIndex++;
-                }
-                else
-                {
-                    enemy.X += (dx / dist) * enemy.Speed * dt;
-                    enemy.Y += (dy / dist) * enemy.Speed * dt;
-                }
-            }
-
-            foreach (var e in enemiesToRemove)
-            {
-                _enemies.Remove(e);
-            }
-
-            foreach (var tower in _towers)
-            {
-                tower.Cooldown -= dt;
-                if (tower.Cooldown > 0) continue;
-
-                var target = _enemies
-                    .Where(e => !e.IsDead && Distance(e.X, e.Y, tower.X, tower.Y) < tower.Range)
-                    .OrderByDescending(e => e.PathIndex)
-                    .FirstOrDefault();
-
-                if (target != null)
-                {
-                    tower.Cooldown = tower.FireRate;
-
-                    _projectiles.Add(new Projectile
-                    {
-                        X = tower.X,
-                        Y = tower.Y,
-                        TargetX = target.X,
-                        TargetY = target.Y,
-                        Damage = tower.Damage
-                    });
-                }
-            }
-
-            var projectilesToRemove = new List<Projectile>();
-            foreach (var proj in _projectiles.ToList())
-            {
-                if (proj.Hit) continue;
-
-                var dx = proj.TargetX - proj.X;
-                var dy = proj.TargetY - proj.Y;
-                var dist = MathF.Sqrt(dx * dx + dy * dy);
-
-                if (dist < 5)
-                {
-                    var enemy = _enemies
-                        .Where(e => !e.IsDead)
-                        .OrderBy(e => Distance(e.X, e.Y, proj.TargetX, proj.TargetY))
-                        .FirstOrDefault();
-
-                    if (enemy != null && Distance(enemy.X, enemy.Y, proj.TargetX, proj.TargetY) < 30)
-                    {
-                        enemy.HP -= proj.Damage;
-                        if (enemy.IsDead)
-                        {
-                            var goldReward = 10 + _currentWave * 2;
-                            _gold += goldReward;
-                            _totalGoldEarned += goldReward;
-                            _totalEnemiesKilled++;
-                        }
-                    }
-
-                    proj.Hit = true;
-                    projectilesToRemove.Add(proj);
-                }
-                else
-                {
-                    proj.X += (dx / dist) * proj.Speed * dt;
-                    proj.Y += (dy / dist) * proj.Speed * dt;
-                }
-            }
-
-            foreach (var p in projectilesToRemove)
-            {
-                _projectiles.Remove(p);
-            }
-
-            _enemies.RemoveAll(e => e.IsDead);
+            UpdateEnemies(dt);
+            UpdateTowers(dt);
+            UpdateProjectiles(dt);
+            UpdateEffects(dt);
         }
 
         await InvokeAsync(StateHasChanged);
         await RenderGame();
+    }
+
+    private void UpdateEnemies(float dt)
+    {
+        var enemiesToRemove = new List<Enemy>();
+
+        foreach (var enemy in _enemies.ToList())
+        {
+            if (enemy.IsDead) continue;
+
+            // Update effects
+            UpdateEnemyEffects(enemy, dt);
+
+            // Summoner ability
+            if (enemy.Type is EnemyType.Summoner or EnemyType.BossSummoner)
+            {
+                enemy.SummonCooldown -= dt;
+                if (enemy.SummonCooldown <= 0 && enemy.SummonCount > 0)
+                {
+                    SpawnSummonedEnemy(enemy);
+                    enemy.SummonCooldown = enemy.Type == EnemyType.BossSummoner ? 3f : 5f;
+                    enemy.SummonCount--;
+                }
+            }
+
+            // Movement
+            if (enemy.PathIndex >= _path.Count - 1)
+            {
+                enemiesToRemove.Add(enemy);
+                _lives--;
+
+                if (_lives <= 0)
+                {
+                    _gameOver = true;
+                }
+                continue;
+            }
+
+            var target = _path[enemy.PathIndex + 1];
+            var dx = target.X - enemy.X;
+            var dy = target.Y - enemy.Y;
+            var dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            if (dist < 5)
+            {
+                enemy.PathIndex++;
+            }
+            else
+            {
+                enemy.X += (dx / dist) * enemy.Speed * dt;
+                enemy.Y += (dy / dist) * enemy.Speed * dt;
+            }
+        }
+
+        foreach (var e in enemiesToRemove)
+        {
+            _enemies.Remove(e);
+        }
+
+        _enemies.RemoveAll(e => e.IsDead);
+    }
+
+    private void UpdateEnemyEffects(Enemy enemy, float dt)
+    {
+        enemy.SpeedMultiplier = 1.0f;
+
+        for (int i = enemy.ActiveEffects.Count - 1; i >= 0; i--)
+        {
+            var effect = enemy.ActiveEffects[i];
+            effect.Duration -= dt;
+
+            if (effect.Duration <= 0)
+            {
+                enemy.ActiveEffects.RemoveAt(i);
+                continue;
+            }
+
+            switch (effect.Type)
+            {
+                case EffectType.Slow:
+                    enemy.SpeedMultiplier = Math.Min(enemy.SpeedMultiplier, 1.0f - effect.Intensity);
+                    break;
+
+                case EffectType.Poison:
+                    effect.TickTimer -= dt;
+                    if (effect.TickTimer <= 0)
+                    {
+                        enemy.HP -= effect.DamagePerTick;
+                        effect.TickTimer = 0.5f;
+
+                        if (enemy.IsDead)
+                        {
+                            _gold += GetEnemyGoldReward(enemy);
+                            _totalGoldEarned += GetEnemyGoldReward(enemy);
+                            _totalEnemiesKilled++;
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void SpawnSummonedEnemy(Enemy summoner)
+    {
+        var minion = new Enemy
+        {
+            X = summoner.X + Random.Shared.Next(-20, 20),
+            Y = summoner.Y + Random.Shared.Next(-20, 20),
+            PathIndex = summoner.PathIndex,
+            Type = EnemyType.Normal,
+            BaseSpeed = 60,
+            HP = 30,
+            MaxHP = 30,
+            Size = 10
+        };
+
+        _enemies.Add(minion);
+
+        _effects.Add(new Effect
+        {
+            X = summoner.X,
+            Y = summoner.Y,
+            Type = "summon",
+            Duration = 0.5f
+        });
+    }
+
+    private void UpdateTowers(float dt)
+    {
+        foreach (var tower in _towers)
+        {
+            tower.Cooldown -= dt;
+            if (tower.Cooldown > 0) continue;
+
+            var target = FindTarget(tower);
+
+            if (target != null)
+            {
+                tower.Cooldown = tower.FireRate / (1 + (tower.Level - 1) * 0.2f);
+
+                var projectile = new Projectile
+                {
+                    X = tower.X,
+                    Y = tower.Y,
+                    Target = target,
+                    Damage = (int)(tower.Damage * (1 + (tower.Level - 1) * 0.5f)),
+                    TowerType = tower.Type,
+                    ChainCount = tower.Type == TowerType.Lightning && tower.Level >= 2 ? 2 : 0
+                };
+
+                _projectiles.Add(projectile);
+            }
+        }
+    }
+
+    private Enemy? FindTarget(Tower tower)
+    {
+        return _enemies
+            .Where(e => !e.IsDead && Distance(e.X, e.Y, tower.X, tower.Y) < tower.Range * (1 + (tower.Level - 1) * 0.15f))
+            .OrderByDescending(e => e.PathIndex)
+            .ThenBy(e => e.HP)
+            .FirstOrDefault();
+    }
+
+    private void UpdateProjectiles(float dt)
+    {
+        var projectilesToRemove = new List<Projectile>();
+
+        foreach (var proj in _projectiles.ToList())
+        {
+            if (proj.Hit || proj.Target == null || proj.Target.IsDead)
+            {
+                projectilesToRemove.Add(proj);
+                continue;
+            }
+
+            var dx = proj.Target.X - proj.X;
+            var dy = proj.Target.Y - proj.Y;
+            var dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            if (dist < 10)
+            {
+                HitEnemy(proj.Target, proj);
+                proj.Hit = true;
+                projectilesToRemove.Add(proj);
+
+                // Chain lightning
+                if (proj.TowerType == TowerType.Lightning && proj.ChainCount > 0)
+                {
+                    var nextTarget = _enemies
+                        .Where(e => !e.IsDead && e != proj.Target && Distance(e.X, e.Y, proj.Target.X, proj.Target.Y) < 100)
+                        .OrderBy(e => Distance(e.X, e.Y, proj.Target.X, proj.Target.Y))
+                        .FirstOrDefault();
+
+                    if (nextTarget != null)
+                    {
+                        _projectiles.Add(new Projectile
+                        {
+                            X = proj.Target.X,
+                            Y = proj.Target.Y,
+                            Target = nextTarget,
+                            Damage = (int)(proj.Damage * 0.7f),
+                            TowerType = proj.TowerType,
+                            ChainCount = proj.ChainCount - 1,
+                            Speed = proj.Speed
+                        });
+                    }
+                }
+            }
+            else
+            {
+                proj.X += (dx / dist) * proj.Speed * dt;
+                proj.Y += (dy / dist) * proj.Speed * dt;
+            }
+        }
+
+        foreach (var p in projectilesToRemove)
+        {
+            _projectiles.Remove(p);
+        }
+    }
+
+    private void HitEnemy(Enemy enemy, Projectile proj)
+    {
+        enemy.HP -= proj.Damage;
+
+        _effects.Add(new Effect
+        {
+            X = enemy.X,
+            Y = enemy.Y,
+            Type = "hit",
+            Duration = 0.3f
+        });
+
+        // Apply tower effects
+        switch (proj.TowerType)
+        {
+            case TowerType.Freeze:
+                ApplyEffect(enemy, EffectType.Slow, 2f, 0.5f);
+                break;
+
+            case TowerType.Poison:
+                ApplyEffect(enemy, EffectType.Poison, 3f, 0, proj.Damage * 2);
+                break;
+        }
+
+        if (enemy.IsDead)
+        {
+            var goldReward = GetEnemyGoldReward(enemy);
+            _gold += goldReward;
+            _totalGoldEarned += goldReward;
+            _totalEnemiesKilled++;
+
+            _effects.Add(new Effect
+            {
+                X = enemy.X,
+                Y = enemy.Y,
+                Type = "death",
+                Duration = 0.5f
+            });
+        }
+    }
+
+    private void ApplyEffect(Enemy enemy, EffectType type, float duration, float intensity, int damagePerTick = 0)
+    {
+        var existingEffect = enemy.ActiveEffects.FirstOrDefault(e => e.Type == type);
+
+        if (existingEffect != null)
+        {
+            existingEffect.Duration = Math.Max(existingEffect.Duration, duration);
+        }
+        else
+        {
+            enemy.ActiveEffects.Add(new EnemyEffect
+            {
+                Type = type,
+                Duration = duration,
+                Intensity = intensity,
+                DamagePerTick = damagePerTick,
+                TickTimer = 0.5f
+            });
+        }
+    }
+
+    private int GetEnemyGoldReward(Enemy enemy)
+    {
+        return enemy.Type switch
+        {
+            EnemyType.Normal => 10 + _currentWave * 2,
+            EnemyType.Fast => 8 + _currentWave * 2,
+            EnemyType.Tank => 20 + _currentWave * 3,
+            EnemyType.Summoner => 25 + _currentWave * 3,
+            EnemyType.BossBrute => 100 + _currentWave * 10,
+            EnemyType.BossMage => 120 + _currentWave * 10,
+            EnemyType.BossSummoner => 150 + _currentWave * 10,
+            _ => 10
+        };
+    }
+
+    private void UpdateEffects(float dt)
+    {
+        for (int i = _effects.Count - 1; i >= 0; i--)
+        {
+            _effects[i].Duration -= dt;
+            if (_effects[i].Duration <= 0)
+            {
+                _effects.RemoveAt(i);
+            }
+        }
+    }
+
+    private void UpgradeTower()
+    {
+        if (_selectedTowerForUpgrade == null) return;
+
+        var cost = GetUpgradeCost(_selectedTowerForUpgrade);
+        if (_gold >= cost)
+        {
+            _gold -= cost;
+            _selectedTowerForUpgrade.Level++;
+            _selectedTowerForUpgrade = null;
+            StateHasChanged();
+        }
+    }
+
+    private void SellTower()
+    {
+        if (_selectedTowerForUpgrade == null) return;
+
+        var value = GetSellValue(_selectedTowerForUpgrade);
+        _gold += value;
+        _towers.Remove(_selectedTowerForUpgrade);
+        _selectedTowerForUpgrade = null;
+        StateHasChanged();
+    }
+
+    private int GetUpgradeCost(Tower tower)
+    {
+        return (int)(tower.Cost * 0.7f * tower.Level);
+    }
+
+    private int GetSellValue(Tower tower)
+    {
+        var totalCost = tower.Cost;
+        for (int i = 1; i < tower.Level; i++)
+        {
+            totalCost += (int)(tower.Cost * 0.7f * i);
+        }
+        return (int)(totalCost * 0.6f);
     }
 
     private float Distance(float x1, float y1, float x2, float y2)
@@ -529,21 +971,68 @@
             List<Enemy> enemiesCopy;
             List<Tower> towersCopy;
             List<Projectile> projectilesCopy;
+            List<Effect> effectsCopy;
 
             lock (_lockObject)
             {
                 pathCopy = _path.ToList();
-                enemiesCopy = _enemies.ToList();
-                towersCopy = _towers.ToList();
-                projectilesCopy = _projectiles.ToList();
+                enemiesCopy = _enemies.Select(e => new Enemy
+                {
+                    X = e.X,
+                    Y = e.Y,
+                    HP = e.HP,
+                    MaxHP = e.MaxHP,
+                    Size = e.Size,
+                    Type = e.Type,
+                    ActiveEffects = e.ActiveEffects.ToList()
+                }).ToList();
+                towersCopy = _towers.Select(t => new Tower
+                {
+                    X = t.X,
+                    Y = t.Y,
+                    Type = t.Type,
+                    Range = t.Range,
+                    Level = t.Level
+                }).ToList();
+                projectilesCopy = _projectiles.Select(p => new Projectile
+                {
+                    X = p.X,
+                    Y = p.Y,
+                    TowerType = p.TowerType
+                }).ToList();
+                effectsCopy = _effects.ToList();
             }
 
             var data = new
             {
                 path = pathCopy,
-                enemies = enemiesCopy,
-                towers = towersCopy,
-                projectiles = projectilesCopy,
+                enemies = enemiesCopy.Select(e => new
+                {
+                    x = e.X,
+                    y = e.Y,
+                    hp = e.HP,
+                    maxHP = e.MaxHP,
+                    size = e.Size,
+                    type = (int)e.Type,
+                    isBoss = e.IsBoss,
+                    hasPoison = e.ActiveEffects.Any(ef => ef.Type == EffectType.Poison),
+                    hasSlow = e.ActiveEffects.Any(ef => ef.Type == EffectType.Slow)
+                }),
+                towers = towersCopy.Select(t => new
+                {
+                    x = t.X,
+                    y = t.Y,
+                    type = (int)t.Type,
+                    range = t.Range * (1 + (t.Level - 1) * 0.15f),
+                    level = t.Level
+                }),
+                projectiles = projectilesCopy.Select(p => new
+                {
+                    x = p.X,
+                    y = p.Y,
+                    type = (int)p.TowerType
+                }),
+                effects = effectsCopy,
                 selectedTower = _selectedTower
             };
 
@@ -559,7 +1048,7 @@
     {
         lock (_lockObject)
         {
-            _gold = 200;
+            _gold = 250;
             _lives = 20;
             _currentWave = 0;
             _nextWaveNumber = 1;
@@ -571,7 +1060,9 @@
             _towers.Clear();
             _enemies.Clear();
             _projectiles.Clear();
+            _effects.Clear();
             _selectedTower = null;
+            _selectedTowerForUpgrade = null;
         }
         StateHasChanged();
     }
