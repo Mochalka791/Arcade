@@ -26,7 +26,7 @@
             📡 Range
         </button>
         <button class="btn-small" @onclick="TogglePause">@(_isPaused ? "▶️" : "⏸️")</button>
-        <button class="btn-small" @onclick="ToggleSpeed">⚡ x@_gameSpeed.ToString("0.0")</button>
+        <button class="btn-small btn" @onclick="ToggleSpeed">⚡ x@_gameSpeed.ToString("0.0")</button>
     </div>
 
     <div class="game-layout">
@@ -410,7 +410,8 @@
 
             new List<Point>
             {
-                new() { X = 1600, Y = 200 },
+                new() { X = 1450, Y = 0 },
+                new() { X = 1450, Y = 200 },
                 new() { X = 1300, Y = 200 },
                 new() { X = 1300, Y = 450 },
                 new() { X = 800, Y = 450 }
