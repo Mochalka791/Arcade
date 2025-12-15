@@ -16,7 +16,7 @@
             <span class="stat">👹 @_enemies.Count</span>
             <span class="stat">💀 @_totalEnemiesKilled</span>
         </div>
-        <button class="btn-primary" @onclick="StartNextWave" disabled="@(_gameOver || _isPaused || _activeWaves > 0)">
+        <button class="btn-primary" @onclick="StartNextWave" disabled="@(_gameOver || _isPaused)">
             ▶️ Wave @(_nextWaveNumber)
         </button>
         <button class="btn-toggle @(_autoWave ? "active" : "")" @onclick="ToggleAutoWave">
