@@ -1,0 +1,1305 @@
+﻿@page "/ueberleben"
+@layout Arcade.Components.Layout.EmptyLayout
+@rendermode Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Überleben - Tower Defense</PageTitle>
+
+<div class="survival-game">
+    <div class="hud">
+        <div class="hud-left">
+            <div class="core-status">
+                <div class="core-icon">🏛️</div>
+                <div class="core-info">
+                    <div class="core-label">CORE</div>
+                    <div class="core-hp-bar">
+                        <div class="core-hp-fill" style="width: @((_coreHP / (float)_maxCoreHP) * 100)%"></div>
+                    </div>
+                    <div class="core-hp-text">@_coreHP / @_maxCoreHP</div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat">💰 @_gold</div>
+                <div class="stat">⏱️ @_survivalTime.ToString("mm\\:ss")</div>
+            </div>
+        </div>
+
+        <div class="hud-center">
+            @if (_survivalTime.TotalSeconds < 10)
+            {
+                <div class="grace-period">
+                    <div class="grace-icon">🛡️</div>
+                    <div class="grace-text">BAUPHASE</div>
+                    <div class="grace-timer">@((10 - _survivalTime.TotalSeconds).ToString("0"))s</div>
+                </div>
+            }
+            else
+            {
+                <div class="difficulty-meter">
+                    <div class="difficulty-label">LEVEL</div>
+                    <div class="difficulty-value">@GetDifficultyLevel()</div>
+                    <div class="difficulty-desc">@GetDifficultyDescription()</div>
+                </div>
+            }
+
+            @if (_currentEvent != null)
+            {
+                <div class="event-warning">
+                    <div class="event-icon">⚠️</div>
+                    <div class="event-text">@_currentEvent.Name</div>
+                    <div class="event-timer">@_currentEvent.Duration.ToString("0.0")s</div>
+                </div>
+            }
+        </div>
+
+        <div class="hud-right">
+            <div class="enemy-counter">
+                <div class="enemy-label">FEINDE</div>
+                <div class="enemy-count">@_enemies.Count</div>
+                <div class="enemy-killed">💀 @_totalKilled</div>
+            </div>
+            @if (_currentWave > 0)
+            {
+                <div class="wave-indicator">
+                    <div class="wave-label">WELLE</div>
+                    <div class="wave-number">@_currentWave</div>
+                    @if (_waveTimer > 0)
+                    {
+                        <div class="wave-timer">Nächste in @_waveTimer.ToString("0")s</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="game-container">
+        <div class="tower-sidebar">
+            <h3>🔧 VERTEIDIGUNG</h3>
+            @foreach (var tower in _availableTowers)
+            {
+                <div class="tower-card @(_selectedTower == tower.Type ? "selected" : "") @(_gold < tower.Cost ? "disabled" : "")"
+                     @onclick="() => SelectTower(tower.Type)">
+                    <div class="tower-emoji">@tower.Emoji</div>
+                    <div class="tower-name">@tower.Name</div>
+                    <div class="tower-cost">💰 @tower.Cost</div>
+                    <div class="tower-stats">
+                        <small>🎯 @tower.Range | ⚔️ @tower.Damage</small>
+                    </div>
+                </div>
+            }
+
+            @if (_selectedTowerForUpgrade != null)
+            {
+                <div class="upgrade-panel">
+                    <h4>⬆️ UPGRADE</h4>
+                    <div>Level @_selectedTowerForUpgrade.Level</div>
+                    <button class="btn-upgrade" @onclick="UpgradeTower"
+                            disabled="@(_gold < GetUpgradeCost(_selectedTowerForUpgrade))">
+                        💰 @GetUpgradeCost(_selectedTowerForUpgrade)
+                    </button>
+                    <button class="btn-sell" @onclick="SellTower">
+                        💸 @GetSellValue(_selectedTowerForUpgrade)
+                    </button>
+                </div>
+            }
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="survivalCanvas"></canvas>
+
+            @if (_stress > 70)
+            {
+                <div class="stress-overlay" style="opacity: @((_stress - 70) / 100f)"></div>
+            }
+
+            @if (!_jsInitialized && _isRendered)
+            {
+                <div class="loading-overlay">
+                    <div class="loading-text">🎮 Initialisiere Spiel...</div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (_isPaused && !_gameOver)
+    {
+        <div class="pause-overlay">
+            <div class="pause-box">
+                <h1>⏸️ PAUSE</h1>
+                <button class="btn-resume" @onclick="TogglePause">▶️ Weiter</button>
+            </div>
+        </div>
+    }
+
+    @if (_gameOver)
+    {
+        <div class="gameover-overlay">
+            <div class="gameover-box">
+                <h1>💀 ÜBERRANNT</h1>
+                <div class="final-stats">
+                    <div class="final-stat">
+                        <div class="final-label">Überlebt</div>
+                        <div class="final-value">@_survivalTime.ToString("mm\\:ss")</div>
+                    </div>
+                    <div class="final-stat">
+                        <div class="final-label">Getötet</div>
+                        <div class="final-value">@_totalKilled</div>
+                    </div>
+                    <div class="final-stat">
+                        <div class="final-label">Wellen</div>
+                        <div class="final-value">@_currentWave</div>
+                    </div>
+                </div>
+                <button class="btn-restart" @onclick="RestartGame">🔄 Nochmal</button>
+            </div>
+        </div>
+    }
+
+    <div class="game-controls">
+        <button class="btn-control" @onclick="TogglePause">@(_isPaused ? "▶️" : "⏸️")</button>
+        <button class="btn-control" @onclick="ToggleSpeed">⚡ x@_gameSpeed.ToString("0.0")</button>
+    </div>
+</div>
+
+@code {
+    private DotNetObjectReference<Überleben>? _dotNetRef;
+    private bool _isRendered = false;
+    private bool _jsInitialized = false;
+    private bool _isPaused = false;
+    private bool _gameOver = false;
+    private float _gameSpeed = 1.0f;
+
+    private int _gold = 800;
+    private int _coreHP = 2000;
+    private int _maxCoreHP = 2000;
+    private float _spawnPressure = 0f;
+    private float _maxPressure = 0f;
+    private float _stress = 0f;
+    private TimeSpan _survivalTime = TimeSpan.Zero;
+    private int _totalKilled = 0;
+    private int _currentWave = 0;
+    private float _waveTimer = 0f;
+
+    private float _spawnTimer = 0f;
+    private float _nextEventThreshold = 180f;
+    private float _bossTimer = 0f;
+    private bool _isWaveActive = false;
+
+    private TowerType? _selectedTower = null;
+    private Tower? _selectedTowerForUpgrade = null;
+    private List<Tower> _towers = new();
+    private List<Enemy> _enemies = new();
+    private List<Projectile> _projectiles = new();
+    private List<Effect> _effects = new();
+    private GameEvent? _currentEvent = null;
+
+    private Point _corePosition = new() { X = 800, Y = 450 };
+    private System.Threading.Timer? _gameTimer;
+    private readonly object _lockObject = new();
+    private int _loopCount = 0;
+
+    enum TowerType { Gatling, Cannon, Laser, Frost, Flamethrower }
+    enum EnemyType { Runner, Walker, Brute, Spitter, Leech, Phantom, Commander, Boss }
+
+    class Point { public float X { get; set; } public float Y { get; set; } }
+
+    class Tower
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public TowerType Type { get; set; }
+        public float Range { get; set; }
+        public float FireRate { get; set; }
+        public int Damage { get; set; }
+        public float Cooldown { get; set; }
+        public int Level { get; set; } = 1;
+        public int Cost { get; set; }
+        public float Heat { get; set; }
+    }
+
+    class Enemy
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Speed { get; set; }
+        public int HP { get; set; }
+        public int MaxHP { get; set; }
+        public float Size { get; set; }
+        public EnemyType Type { get; set; }
+        public float SlowEffect { get; set; } = 1f;
+        public bool IsBoss { get; set; }
+        public bool IsCommander { get; set; }
+        public bool IsPhantom { get; set; }
+        public bool IsLeech { get; set; }
+        public float HealCooldown { get; set; }
+        public float PhantomTimer { get; set; }
+        public int Priority { get; set; }
+    }
+
+    class Projectile
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public Enemy? Target { get; set; }
+        public float Speed { get; set; } = 400;
+        public int Damage { get; set; }
+        public TowerType Type { get; set; }
+    }
+
+    class Effect
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public string Type { get; set; } = "";
+        public float Duration { get; set; }
+        public float Size { get; set; }
+    }
+
+    class TowerInfo
+    {
+        public TowerType Type { get; set; }
+        public string Name { get; set; } = "";
+        public string Emoji { get; set; } = "";
+        public int Cost { get; set; }
+        public int Range { get; set; }
+        public int Damage { get; set; }
+    }
+
+    class GameEvent
+    {
+        public string Name { get; set; } = "";
+        public float Duration { get; set; }
+    }
+
+    private List<TowerInfo> _availableTowers = new()
+    {
+        new() { Type = TowerType.Gatling, Name = "Gatling", Emoji = "🔫", Cost = 80, Range = 150, Damage = 5 },
+        new() { Type = TowerType.Cannon, Name = "Kanone", Emoji = "💥", Cost = 150, Range = 120, Damage = 40 },
+        new() { Type = TowerType.Laser, Name = "Laser", Emoji = "⚡", Cost = 200, Range = 200, Damage = 15 },
+        new() { Type = TowerType.Frost, Name = "Frost", Emoji = "❄️", Cost = 120, Range = 130, Damage = 3 },
+        new() { Type = TowerType.Flamethrower, Name = "Flamme", Emoji = "🔥", Cost = 130, Range = 100, Damage = 8 }
+    };
+
+    protected override void OnInitialized()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+        Console.WriteLine("🎮 [C#] Component Initialized");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Console.WriteLine("🎮 [C#] OnAfterRenderAsync - First Render");
+
+            _isRendered = true;
+            await InvokeAsync(StateHasChanged);
+
+            await Task.Delay(2000);
+
+            try
+            {
+                Console.WriteLine("🔍 [C#] Checking if survival exists...");
+
+                var jsExists = await JS.InvokeAsync<bool>("eval",
+                    "typeof window.survival !== 'undefined'");
+
+                if (!jsExists)
+                {
+                    Console.WriteLine("❌ [C#] window.survival not found!");
+                    return;
+                }
+
+                Console.WriteLine("✅ [C#] window.survival exists");
+
+                var alreadyInitialized = await JS.InvokeAsync<bool>("survival.isReady");
+
+                if (!alreadyInitialized)
+                {
+                    Console.WriteLine("🔧 [C#] Auto-init not complete, calling init manually...");
+                    await JS.InvokeVoidAsync("survival.init");
+                    await Task.Delay(1500);
+                }
+                else
+                {
+                    Console.WriteLine("✅ [C#] Auto-init already completed!");
+                }
+
+                var canvasReady = await JS.InvokeAsync<bool>("survival.isReady");
+
+                if (!canvasReady)
+                {
+                    Console.WriteLine("❌ [C#] Canvas still not ready after init!");
+                    return;
+                }
+
+                Console.WriteLine("✅ [C#] Canvas is ready");
+
+                await JS.InvokeVoidAsync("survival.setDotNetRef", _dotNetRef);
+
+                _jsInitialized = true;
+                Console.WriteLine("✅✅✅ [C#] FULLY INITIALIZED!");
+
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [C#] Init Error: {ex.Message}");
+                Console.WriteLine($"Stack: {ex.StackTrace}");
+                return;
+            }
+
+            Console.WriteLine("🎮 [C#] Starting game timer...");
+            _gameTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    _ = InvokeAsync(() => GameLoop());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ [C#] Timer Error: {ex.Message}");
+                }
+            }, null, 1000, 16);
+
+            Console.WriteLine("✅ [C#] Game timer started");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnCanvasClick(float x, float y)
+    {
+        if (_gameOver || _isPaused) return;
+
+        Console.WriteLine($"🖱️ [C#] Canvas clicked at {x}, {y}");
+
+        var clickedTower = _towers.FirstOrDefault(t =>
+            Distance(t.X, t.Y, x, y) < 30);
+
+        if (clickedTower != null)
+        {
+            _selectedTowerForUpgrade = clickedTower;
+            _selectedTower = null;
+            Console.WriteLine($"🏗️ [C#] Tower selected for upgrade");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _selectedTowerForUpgrade = null;
+
+        if (_selectedTower == null) return;
+
+        var towerInfo = _availableTowers.First(t => t.Type == _selectedTower.Value);
+        var tower = CreateTower(_selectedTower.Value, x, y, towerInfo.Cost);
+
+        if (_gold >= tower.Cost && Distance(x, y, _corePosition.X, _corePosition.Y) > 100)
+        {
+            lock (_lockObject)
+            {
+                _gold -= tower.Cost;
+                _towers.Add(tower);
+            }
+            Console.WriteLine($"🏗️ [C#] Tower placed: {tower.Type}");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Tower CreateTower(TowerType type, float x, float y, int cost)
+    {
+        return type switch
+        {
+            TowerType.Gatling => new Tower { X = x, Y = y, Type = type, Range = 150, FireRate = 0.2f, Damage = 50, Cost = cost },
+            TowerType.Cannon => new Tower { X = x, Y = y, Type = type, Range = 120, FireRate = 1f, Damage = 40, Cost = cost },
+            TowerType.Laser => new Tower { X = x, Y = y, Type = type, Range = 200, FireRate = 0.1f, Damage = 15, Cost = cost },
+            TowerType.Frost => new Tower { X = x, Y = y, Type = type, Range = 130, FireRate = 0.3f, Damage = 3, Cost = cost },
+            TowerType.Flamethrower => new Tower { X = x, Y = y, Type = type, Range = 100, FireRate = 0.12f, Damage = 8, Cost = cost },
+            _ => throw new ArgumentException()
+        };
+    }
+
+    private void SelectTower(TowerType type)
+    {
+        if (_gold < _availableTowers.First(t => t.Type == type).Cost) return;
+        _selectedTower = type;
+        _selectedTowerForUpgrade = null;
+        Console.WriteLine($"🏗️ [C#] Tower type selected: {type}");
+        StateHasChanged();
+    }
+
+    private void UpgradeTower()
+    {
+        if (_selectedTowerForUpgrade == null) return;
+        var cost = GetUpgradeCost(_selectedTowerForUpgrade);
+        if (_gold >= cost)
+        {
+            _gold -= cost;
+            _selectedTowerForUpgrade.Level++;
+            _selectedTowerForUpgrade.Damage = (int)(_selectedTowerForUpgrade.Damage * 1.5f);
+            _selectedTowerForUpgrade.Range *= 1.1f;
+            Console.WriteLine($"⬆️ [C#] Tower upgraded to level {_selectedTowerForUpgrade.Level}");
+            StateHasChanged();
+        }
+    }
+
+    private void SellTower()
+    {
+        if (_selectedTowerForUpgrade == null) return;
+        _gold += GetSellValue(_selectedTowerForUpgrade);
+        Console.WriteLine($"💸 [C#] Tower sold for {GetSellValue(_selectedTowerForUpgrade)}");
+        _towers.Remove(_selectedTowerForUpgrade);
+        _selectedTowerForUpgrade = null;
+        StateHasChanged();
+    }
+
+    private int GetUpgradeCost(Tower tower) => (int)(tower.Cost * 0.8f * tower.Level);
+    private int GetSellValue(Tower tower) => (int)(tower.Cost * 0.6f * tower.Level);
+
+    private void TogglePause()
+    {
+        _isPaused = !_isPaused;
+        Console.WriteLine($"⏸️ [C#] Pause: {_isPaused}");
+        StateHasChanged();
+    }
+
+    private void ToggleSpeed()
+    {
+        if (_isPaused) return;
+        _gameSpeed = _gameSpeed >= 3f ? 1f : _gameSpeed + 1f;
+        Console.WriteLine($"⚡ [C#] Speed: {_gameSpeed}x");
+        StateHasChanged();
+    }
+
+    private string GetDifficultyLevel()
+    {
+        var seconds = _survivalTime.TotalSeconds;
+        if (seconds < 30) return "1";
+        if (seconds < 60) return "2";
+        if (seconds < 90) return "3";
+        if (seconds < 120) return "4";
+        if (seconds < 180) return "5";
+        if (seconds < 240) return "6";
+        if (seconds < 300) return "7";
+        return "8+";
+    }
+
+    private string GetDifficultyDescription()
+    {
+        var seconds = _survivalTime.TotalSeconds;
+        if (seconds < 30) return "🏃 Runner";
+        if (seconds < 60) return "🚶 + Walker";
+        if (seconds < 90) return "💪 + Brute";
+        if (seconds < 120) return "🎯 + Spitter";
+        if (seconds < 180) return "🩸 + Leech";
+        if (seconds < 240) return "👻 + Phantom";
+        if (seconds < 300) return "👑 + Commander";
+        return "👹 + Boss";
+    }
+
+    private async void GameLoop()
+    {
+        if (_gameOver || !_isRendered || !_jsInitialized || _isPaused) return;
+
+        _loopCount++;
+
+        if (_loopCount % 60 == 0)
+        {
+            Console.WriteLine($"🎮 [C#] Loop #{_loopCount} - Time: {_survivalTime.TotalSeconds:F1}s, Enemies: {_enemies.Count}, Level: {GetDifficultyLevel()}");
+        }
+
+        var dt = 0.016f * _gameSpeed;
+
+        try
+        {
+            lock (_lockObject)
+            {
+                _survivalTime += TimeSpan.FromSeconds(dt);
+
+                // Grace period: Erste 10 Sekunden keine Enemies
+                if (_survivalTime.TotalSeconds < 10)
+                {
+                    UpdateTowers(dt);
+                    UpdateProjectiles(dt);
+                    UpdateEffects(dt);
+                }
+                else
+                {
+                    UpdateProgressiveSpawning(dt);
+                    UpdateWaveSystem(dt);
+                    UpdateEvents(dt);
+                    UpdateEnemies(dt);
+                    UpdateSpecialEnemies(dt);
+                    UpdateTowers(dt);
+                    UpdateProjectiles(dt);
+                    UpdateEffects(dt);
+                    UpdateStress();
+                    UpdateCore();
+                }
+
+                if (_coreHP <= 0)
+                {
+                    _gameOver = true;
+                    Console.WriteLine($"💀 [C#] GAME OVER at {_survivalTime.ToString("mm\\:ss")}!");
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await RenderGame();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ [C#] GameLoop Error: {ex.Message}");
+        }
+    }
+
+    private void UpdateProgressiveSpawning(float dt)
+    {
+        if (_isWaveActive) return;
+
+        _spawnTimer -= dt;
+        var seconds = _survivalTime.TotalSeconds;
+
+        // Spawn-Intervall und Anzahl basierend auf Zeit
+        float spawnInterval;
+        int spawnCount;
+
+        if (seconds < 30)
+        {
+            // Level 1: 10-30s - Nur Runner, langsam
+            spawnInterval = 3.0f;
+            spawnCount = 1;
+        }
+        else if (seconds < 60)
+        {
+            // Level 2: 30-60s - Runner + Walker
+            spawnInterval = 2.0f;
+            spawnCount = Random.Shared.Next(1, 3);
+        }
+        else if (seconds < 90)
+        {
+            // Level 3: 60-90s - + Brute
+            spawnInterval = 1.5f;
+            spawnCount = Random.Shared.Next(2, 4);
+        }
+        else if (seconds < 120)
+        {
+            // Level 4: 90-120s - + Spitter
+            spawnInterval = 1.2f;
+            spawnCount = Random.Shared.Next(3, 5);
+        }
+        else if (seconds < 180)
+        {
+            // Level 5: 120-180s - + Leech
+            spawnInterval = 1.0f;
+            spawnCount = Random.Shared.Next(3, 6);
+        }
+        else if (seconds < 240)
+        {
+            // Level 6: 180-240s - + Phantom
+            spawnInterval = 0.8f;
+            spawnCount = Random.Shared.Next(4, 7);
+        }
+        else if (seconds < 300)
+        {
+            // Level 7: 240-300s - + Commander
+            spawnInterval = 0.7f;
+            spawnCount = Random.Shared.Next(5, 8);
+        }
+        else
+        {
+            // Level 8+: 300s+ - Alles + Boss möglich
+            spawnInterval = 0.5f;
+            spawnCount = Random.Shared.Next(5, 10);
+        }
+
+        if (_spawnTimer <= 0)
+        {
+            for (int i = 0; i < spawnCount; i++)
+            {
+                SpawnProgressiveEnemy();
+            }
+            _spawnTimer = spawnInterval;
+        }
+
+        // Boss Spawn ab 5 Minuten
+        if (seconds > 300)
+        {
+            _bossTimer += dt;
+            if (_bossTimer > 45 && Random.Shared.Next(100) < 3)
+            {
+                SpawnBoss();
+                _bossTimer = 0;
+            }
+        }
+    }
+
+    private void SpawnProgressiveEnemy()
+    {
+        var angle = Random.Shared.NextSingle() * MathF.PI * 2;
+        var distance = 500 + Random.Shared.Next(250);
+
+        var x = _corePosition.X + MathF.Cos(angle) * distance;
+        var y = _corePosition.Y + MathF.Sin(angle) * distance;
+
+        var type = SelectProgressiveEnemyType();
+        var enemy = CreateProgressiveEnemy(type, x, y);
+        _enemies.Add(enemy);
+    }
+
+    private EnemyType SelectProgressiveEnemyType()
+    {
+        var seconds = _survivalTime.TotalSeconds;
+        var roll = Random.Shared.Next(100);
+
+        if (seconds < 30)
+        {
+            // Nur Runner
+            return EnemyType.Runner;
+        }
+        else if (seconds < 60)
+        {
+            // Runner + Walker
+            return roll < 70 ? EnemyType.Runner : EnemyType.Walker;
+        }
+        else if (seconds < 90)
+        {
+            // Runner + Walker + Brute
+            if (roll < 50) return EnemyType.Runner;
+            if (roll < 85) return EnemyType.Walker;
+            return EnemyType.Brute;
+        }
+        else if (seconds < 120)
+        {
+            // + Spitter
+            if (roll < 40) return EnemyType.Runner;
+            if (roll < 70) return EnemyType.Walker;
+            if (roll < 90) return EnemyType.Brute;
+            return EnemyType.Spitter;
+        }
+        else if (seconds < 180)
+        {
+            // + Leech (selten)
+            if (roll < 35) return EnemyType.Runner;
+            if (roll < 60) return EnemyType.Walker;
+            if (roll < 80) return EnemyType.Brute;
+            if (roll < 92) return EnemyType.Spitter;
+            return EnemyType.Leech;
+        }
+        else if (seconds < 240)
+        {
+            // + Phantom (selten)
+            if (roll < 30) return EnemyType.Runner;
+            if (roll < 55) return EnemyType.Walker;
+            if (roll < 75) return EnemyType.Brute;
+            if (roll < 87) return EnemyType.Spitter;
+            if (roll < 94) return EnemyType.Leech;
+            return EnemyType.Phantom;
+        }
+        else if (seconds < 300)
+        {
+            // + Commander (selten)
+            if (roll < 25) return EnemyType.Runner;
+            if (roll < 50) return EnemyType.Walker;
+            if (roll < 70) return EnemyType.Brute;
+            if (roll < 82) return EnemyType.Spitter;
+            if (roll < 90) return EnemyType.Leech;
+            if (roll < 96) return EnemyType.Phantom;
+            return EnemyType.Commander;
+        }
+        else
+        {
+            // Alle Typen
+            if (roll < 25) return EnemyType.Runner;
+            if (roll < 45) return EnemyType.Walker;
+            if (roll < 65) return EnemyType.Brute;
+            if (roll < 80) return EnemyType.Spitter;
+            if (roll < 88) return EnemyType.Leech;
+            if (roll < 95) return EnemyType.Phantom;
+            return EnemyType.Commander;
+        }
+    }
+
+    private Enemy CreateProgressiveEnemy(EnemyType type, float x, float y)
+    {
+        // Zeit-basierte Schwierigkeit (langsamer Anstieg)
+        var minutes = (float)_survivalTime.TotalMinutes;
+        var timeDifficulty = 1f + (minutes * 0.1f); // +10% pro Minute
+
+        return type switch
+        {
+            EnemyType.Runner => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(80, 40 + (minutes * 4)), // 40 → 80 (Max bei 10min)
+                HP = (int)(20 * timeDifficulty),
+                MaxHP = (int)(20 * timeDifficulty),
+                Size = 8,
+                Priority = 1
+            },
+            EnemyType.Walker => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(50, 30 + (minutes * 2)), // 30 → 50
+                HP = (int)(40 * timeDifficulty),
+                MaxHP = (int)(40 * timeDifficulty),
+                Size = 10,
+                Priority = 2
+            },
+            EnemyType.Brute => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(35, 25 + (minutes * 1)), // 25 → 35
+                HP = (int)(120 * timeDifficulty),
+                MaxHP = (int)(120 * timeDifficulty),
+                Size = 14,
+                Priority = 3
+            },
+            EnemyType.Spitter => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(60, 35 + (minutes * 2.5f)), // 35 → 60
+                HP = (int)(30 * timeDifficulty),
+                MaxHP = (int)(30 * timeDifficulty),
+                Size = 9,
+                Priority = 2
+            },
+            EnemyType.Leech => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(45, 30 + (minutes * 1.5f)), // 30 → 45
+                HP = (int)(70 * timeDifficulty),
+                MaxHP = (int)(70 * timeDifficulty),
+                Size = 11,
+                IsLeech = true,
+                HealCooldown = 3f,
+                Priority = 10
+            },
+            EnemyType.Phantom => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(70, 45 + (minutes * 2.5f)), // 45 → 70
+                HP = (int)(35 * timeDifficulty),
+                MaxHP = (int)(35 * timeDifficulty),
+                Size = 10,
+                IsPhantom = true,
+                PhantomTimer = 0f,
+                Priority = 8
+            },
+            EnemyType.Commander => new Enemy
+            {
+                X = x,
+                Y = y,
+                Type = type,
+                Speed = Math.Min(40, 28 + (minutes * 1.2f)), // 28 → 40
+                HP = (int)(100 * timeDifficulty),
+                MaxHP = (int)(100 * timeDifficulty),
+                Size = 13,
+                IsCommander = true,
+                Priority = 15
+            },
+            _ => throw new ArgumentException()
+        };
+    }
+
+    private void UpdateWaveSystem(float dt)
+    {
+        // Erste Welle nach 2 Minuten
+        if (_survivalTime.TotalSeconds < 120)
+        {
+            return;
+        }
+
+        _waveTimer -= dt;
+
+        if (_waveTimer <= 0 && !_isWaveActive)
+        {
+            _currentWave++;
+            _isWaveActive = true;
+            _waveTimer = 40f; // 40 Sekunden bis nächste Welle
+
+            TriggerWave();
+            Console.WriteLine($"🌊 [C#] WAVE {_currentWave} STARTED!");
+        }
+
+        // Welle endet wenn weniger als 50 Enemies übrig
+        if (_isWaveActive && _enemies.Count < 50 && _waveTimer < 35f)
+        {
+            _isWaveActive = false;
+            _gold += 200 + (_currentWave * 50);
+            Console.WriteLine($"✅ [C#] Wave {_currentWave} completed! +{200 + (_currentWave * 50)} Gold");
+        }
+    }
+
+    private void TriggerWave()
+    {
+        // Kleinere Wellen: 100 + 50 pro Welle, max 500
+        var enemyCount = Math.Min(100 + (_currentWave * 50), 500);
+
+        Console.WriteLine($"🌊 [C#] Spawning wave of {enemyCount} enemies!");
+
+        for (int i = 0; i < enemyCount; i++)
+        {
+            var angle = Random.Shared.NextSingle() * MathF.PI * 2;
+            var distance = 400 + Random.Shared.Next(400);
+
+            var x = _corePosition.X + MathF.Cos(angle) * distance;
+            var y = _corePosition.Y + MathF.Sin(angle) * distance;
+
+            var type = SelectProgressiveEnemyType();
+            var enemy = CreateProgressiveEnemy(type, x, y);
+            _enemies.Add(enemy);
+        }
+
+        // Spezial-Gegner nur wenn verfügbar
+        if (_survivalTime.TotalSeconds > 120)
+        {
+            var specialCount = 3 + _currentWave;
+            for (int i = 0; i < specialCount; i++)
+            {
+                var angle = Random.Shared.NextSingle() * MathF.PI * 2;
+                var distance = 500 + Random.Shared.Next(300);
+
+                var x = _corePosition.X + MathF.Cos(angle) * distance;
+                var y = _corePosition.Y + MathF.Sin(angle) * distance;
+
+                var type = SelectProgressiveEnemyType();
+                var enemy = CreateProgressiveEnemy(type, x, y);
+                _enemies.Add(enemy);
+            }
+        }
+
+        // Boss alle 3 Wellen (nur wenn Boss verfügbar)
+        if (_currentWave % 3 == 0 && _survivalTime.TotalSeconds > 300)
+        {
+            SpawnBoss();
+        }
+    }
+
+    private void SpawnBoss()
+    {
+        var angle = Random.Shared.NextSingle() * MathF.PI * 2;
+        var x = _corePosition.X + MathF.Cos(angle) * 700;
+        var y = _corePosition.Y + MathF.Sin(angle) * 700;
+
+        var minutes = (float)_survivalTime.TotalMinutes;
+        var timeDifficulty = 1f + (minutes * 0.08f);
+
+        var boss = new Enemy
+        {
+            X = x,
+            Y = y,
+            Type = EnemyType.Boss,
+            Speed = Math.Min(40, 28 + (minutes * 1.2f)), // Langsamer Boss
+            HP = (int)(2000 * timeDifficulty),
+            MaxHP = (int)(2000 * timeDifficulty),
+            Size = 30,
+            IsBoss = true,
+            Priority = 20
+        };
+
+        _enemies.Add(boss);
+
+        // Boss spawnt moderate Anzahl Minions
+        for (int i = 0; i < 20; i++)
+        {
+            var minionAngle = Random.Shared.NextSingle() * MathF.PI * 2;
+            var mx = x + MathF.Cos(minionAngle) * Random.Shared.Next(50, 150);
+            var my = y + MathF.Sin(minionAngle) * Random.Shared.Next(50, 150);
+
+            var minion = CreateProgressiveEnemy(EnemyType.Runner, mx, my);
+            _enemies.Add(minion);
+        }
+
+        Console.WriteLine("👹 [C#] BOSS SPAWNED!");
+    }
+
+    private void UpdateEvents(float dt)
+    {
+        // Events erst ab 3 Minuten
+        if (_survivalTime.TotalSeconds < 180) return;
+
+        _spawnPressure += dt * 0.05f;
+
+        if (_spawnPressure > _nextEventThreshold && _currentEvent == null)
+        {
+            TriggerRandomEvent();
+            _nextEventThreshold += Random.Shared.Next(30, 50);
+        }
+
+        if (_currentEvent != null)
+        {
+            _currentEvent.Duration -= dt;
+
+            if (_currentEvent.Duration <= 0)
+            {
+                _currentEvent = null;
+            }
+        }
+    }
+
+    private void TriggerRandomEvent()
+    {
+        var events = new[]
+        {
+            new GameEvent { Name = "⚡ SWARM", Duration = 10f },
+            new GameEvent { Name = "🌑 DARKNESS", Duration = 15f },
+            new GameEvent { Name = "🔥 INFERNO", Duration = 12f }
+        };
+
+        _currentEvent = events[Random.Shared.Next(events.Length)];
+        Console.WriteLine($"⚠️ [C#] Event: {_currentEvent.Name}");
+
+        if (_currentEvent.Name.Contains("SWARM"))
+        {
+            // Moderate Swarm
+            for (int i = 0; i < 50; i++)
+            {
+                SpawnProgressiveEnemy();
+            }
+        }
+    }
+
+    private void UpdateSpecialEnemies(float dt)
+    {
+        foreach (var enemy in _enemies.Where(e => e.IsLeech || e.IsPhantom || e.IsCommander).ToList())
+        {
+            if (enemy.IsLeech)
+            {
+                enemy.HealCooldown -= dt;
+                if (enemy.HealCooldown <= 0)
+                {
+                    var nearbyAllies = _enemies
+                        .Where(e => e != enemy && Distance(e.X, e.Y, enemy.X, enemy.Y) < 120)
+                        .Take(3);
+
+                    foreach (var ally in nearbyAllies)
+                    {
+                        ally.HP = Math.Min(ally.MaxHP, ally.HP + (int)(ally.MaxHP * 0.08f));
+                    }
+
+                    enemy.HealCooldown = 3f;
+                }
+            }
+
+            if (enemy.IsPhantom)
+            {
+                enemy.PhantomTimer += dt;
+            }
+
+            if (enemy.IsCommander)
+            {
+                var buffRange = 150f;
+                var nearbyEnemies = _enemies
+                    .Where(e => e != enemy && Distance(e.X, e.Y, enemy.X, enemy.Y) < buffRange)
+                    .Take(10);
+
+                foreach (var ally in nearbyEnemies)
+                {
+                    ally.Speed = Math.Min(120, ally.Speed * 1.03f); // Leichter Buff, aber Speed-Cap
+                }
+            }
+        }
+    }
+
+    private void UpdateEnemies(float dt)
+    {
+        foreach (var enemy in _enemies.ToList())
+        {
+            var dx = _corePosition.X - enemy.X;
+            var dy = _corePosition.Y - enemy.Y;
+            var dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            if (dist < 50)
+            {
+                var damage = enemy.IsBoss ? 150 :
+                             enemy.IsCommander ? 40 :
+                             enemy.Type == EnemyType.Brute ? 25 : 12;
+                _coreHP -= damage;
+                _enemies.Remove(enemy);
+                continue;
+            }
+
+            var speed = enemy.Speed * enemy.SlowEffect;
+            enemy.X += (dx / dist) * speed * dt;
+            enemy.Y += (dy / dist) * speed * dt;
+
+            enemy.SlowEffect = Math.Min(1f, enemy.SlowEffect + dt * 2f);
+        }
+
+        _enemies.RemoveAll(e => e.HP <= 0);
+    }
+
+    private void UpdateTowers(float dt)
+    {
+        foreach (var tower in _towers)
+        {
+            tower.Cooldown -= dt;
+            tower.Heat = Math.Max(0, tower.Heat - dt * 10);
+
+            if (tower.Heat > 100)
+            {
+                tower.Cooldown = 2f;
+                tower.Heat = 0;
+                continue;
+            }
+
+            if (tower.Cooldown > 0) continue;
+
+            var target = _enemies
+                .Where(e => Distance(e.X, e.Y, tower.X, tower.Y) < tower.Range * (1 + tower.Level * 0.1f))
+                .OrderByDescending(e => e.Priority)
+                .ThenBy(e => Distance(e.X, e.Y, _corePosition.X, _corePosition.Y))
+                .FirstOrDefault();
+
+            if (target != null)
+            {
+                tower.Cooldown = tower.FireRate;
+                tower.Heat += tower.Type == TowerType.Gatling ? 3f : 1f;
+
+                _projectiles.Add(new Projectile
+                {
+                    X = tower.X,
+                    Y = tower.Y,
+                    Target = target,
+                    Damage = (int)(tower.Damage * (1 + tower.Level * 0.5f)),
+                    Type = tower.Type
+                });
+            }
+        }
+    }
+
+    private void UpdateProjectiles(float dt)
+    {
+        foreach (var proj in _projectiles.ToList())
+        {
+            if (proj.Target == null || proj.Target.HP <= 0)
+            {
+                _projectiles.Remove(proj);
+                continue;
+            }
+
+            var dx = proj.Target.X - proj.X;
+            var dy = proj.Target.Y - proj.Y;
+            var dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            if (dist < 10)
+            {
+                HitEnemy(proj.Target, proj);
+                _projectiles.Remove(proj);
+            }
+            else
+            {
+                proj.X += (dx / dist) * proj.Speed * dt;
+                proj.Y += (dy / dist) * proj.Speed * dt;
+            }
+        }
+    }
+
+    private void HitEnemy(Enemy enemy, Projectile proj)
+    {
+        // Phantom ignoriert 50% der Zeit
+        if (enemy.IsPhantom && enemy.PhantomTimer % 1f < 0.5f)
+        {
+            return;
+        }
+
+        enemy.HP -= proj.Damage;
+
+        if (proj.Type == TowerType.Frost)
+        {
+            enemy.SlowEffect = 0.3f;
+        }
+
+        if (enemy.HP <= 0)
+        {
+            var goldReward = enemy.IsBoss ? 250 :
+                            enemy.IsCommander ? 60 :
+                            enemy.IsLeech ? 40 :
+                            enemy.IsPhantom ? 35 :
+                            15 + (int)(_survivalTime.TotalMinutes * 2);
+
+            _gold += goldReward;
+            _totalKilled++;
+        }
+    }
+
+    private void UpdateEffects(float dt)
+    {
+        for (int i = _effects.Count - 1; i >= 0; i--)
+        {
+            _effects[i].Duration -= dt;
+            if (_effects[i].Duration <= 0)
+            {
+                _effects.RemoveAt(i);
+            }
+        }
+    }
+
+    private void UpdateStress()
+    {
+        var nearEnemies = _enemies.Count(e =>
+            Distance(e.X, e.Y, _corePosition.X, _corePosition.Y) < 300);
+
+        _stress = Math.Min(100, nearEnemies * 2 + (_coreHP < 1000 ? 30 : 0));
+    }
+
+    private void UpdateCore()
+    {
+        _coreHP = Math.Max(0, Math.Min(_maxCoreHP, _coreHP));
+    }
+
+    private float Distance(float x1, float y1, float x2, float y2)
+    {
+        var dx = x2 - x1;
+        var dy = y2 - y1;
+        return MathF.Sqrt(dx * dx + dy * dy);
+    }
+
+    private async Task RenderGame()
+    {
+        if (!_isRendered || !_jsInitialized) return;
+
+        try
+        {
+            List<Enemy> enemiesCopy;
+            List<Tower> towersCopy;
+            List<Projectile> projectilesCopy;
+
+            lock (_lockObject)
+            {
+                enemiesCopy = _enemies.Select(e => new Enemy
+                {
+                    X = e.X,
+                    Y = e.Y,
+                    HP = e.HP,
+                    MaxHP = e.MaxHP,
+                    Size = e.Size,
+                    Type = e.Type,
+                    IsBoss = e.IsBoss,
+                    IsLeech = e.IsLeech,
+                    IsPhantom = e.IsPhantom,
+                    IsCommander = e.IsCommander,
+                    PhantomTimer = e.PhantomTimer
+                }).ToList();
+
+                towersCopy = _towers.Select(t => new Tower
+                {
+                    X = t.X,
+                    Y = t.Y,
+                    Type = t.Type,
+                    Range = t.Range,
+                    Level = t.Level,
+                    Heat = t.Heat
+                }).ToList();
+
+                projectilesCopy = _projectiles.Select(p => new Projectile
+                {
+                    X = p.X,
+                    Y = p.Y,
+                    Type = p.Type
+                }).ToList();
+            }
+
+            var data = new
+            {
+                core = new { x = _corePosition.X, y = _corePosition.Y },
+                enemies = enemiesCopy.Select(e => new
+                {
+                    x = e.X,
+                    y = e.Y,
+                    hp = e.HP,
+                    maxHP = e.MaxHP,
+                    size = e.Size,
+                    type = (int)e.Type,
+                    isBoss = e.IsBoss,
+                    isLeech = e.IsLeech,
+                    isPhantom = e.IsPhantom,
+                    isCommander = e.IsCommander,
+                    phantomActive = e.IsPhantom && e.PhantomTimer % 1f < 0.5f
+                }),
+                towers = towersCopy.Select(t => new
+                {
+                    x = t.X,
+                    y = t.Y,
+                    type = (int)t.Type,
+                    range = t.Range * (1 + t.Level * 0.1f),
+                    level = t.Level,
+                    heat = t.Heat
+                }),
+                projectiles = projectilesCopy.Select(p => new
+                {
+                    x = p.X,
+                    y = p.Y,
+                    type = (int)p.Type
+                }),
+                selectedTower = _selectedTower.HasValue ? (int?)_selectedTower.Value : null,
+                stress = _stress
+            };
+
+            await JS.InvokeVoidAsync("survival.render", data);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ [C#] Render Error: {ex.Message}");
+        }
+    }
+
+    private void RestartGame()
+    {
+        Console.WriteLine("🔄 [C#] Restarting game...");
+
+        lock (_lockObject)
+        {
+            _gold = 800;
+            _coreHP = 2000;
+            _maxCoreHP = 2000;
+            _spawnPressure = 0f;
+            _maxPressure = 0f;
+            _stress = 0f;
+            _survivalTime = TimeSpan.Zero;
+            _totalKilled = 0;
+            _currentWave = 0;
+            _waveTimer = 0f;
+            _gameOver = false;
+            _isPaused = false;
+            _gameSpeed = 1f;
+            _spawnTimer = 0f;
+            _nextEventThreshold = 180f;
+            _bossTimer = 0f;
+            _isWaveActive = false;
+            _currentEvent = null;
+            _towers.Clear();
+            _enemies.Clear();
+            _projectiles.Clear();
+            _effects.Clear();
+            _selectedTower = null;
+            _selectedTowerForUpgrade = null;
+            _loopCount = 0;
+        }
+
+        StateHasChanged();
+        Console.WriteLine("✅ [C#] Game restarted");
+    }
+
+    public void Dispose()
+    {
+        Console.WriteLine("🗑️ [C#] Disposing component...");
+        _gameTimer?.Dispose();
+        _dotNetRef?.Dispose();
+    }
+}
