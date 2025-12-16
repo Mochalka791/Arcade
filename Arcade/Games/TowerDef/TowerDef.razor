@@ -369,62 +369,158 @@
             await InvokeAsync(StateHasChanged);
         }
     }
-
     private void InitializePaths()
     {
-        var commonPath = new List<Point>
-        {
-            new() { X = 800, Y = 450 },
-            new() { X = 1000, Y = 450 },
-            new() { X = 1000, Y = 300 },
-            new() { X = 1200, Y = 300 },
-            new() { X = 1200, Y = 450 },
-            new() { X = 1500, Y = 450 }
-        };
-
-        _paths = new List<List<Point>>
-        {
-            new List<Point>
-            {
-                new() { X = 0, Y = 200 },
-                new() { X = 300, Y = 200 },
-                new() { X = 300, Y = 450 },
-                new() { X = 800, Y = 450 }
-            }.Concat(commonPath).ToList(),
-
-            new List<Point>
-            {
-                new() { X = 0, Y = 700 },
-                new() { X = 400, Y = 700 },
-                new() { X = 400, Y = 450 },
-                new() { X = 800, Y = 450 }
-            }.Concat(commonPath).ToList(),
-
-            new List<Point>
-            {
-                new() { X = 600, Y = 0 },
-                new() { X = 600, Y = 200 },
-                new() { X = 800, Y = 200 },
-                new() { X = 800, Y = 450 }
-            }.Concat(commonPath).ToList(),
-
-            new List<Point>
-            {
-                new() { X = 1450, Y = 0 },
-                new() { X = 1450, Y = 200 },
-                new() { X = 1300, Y = 200 },
-                new() { X = 1300, Y = 450 },
-                new() { X = 800, Y = 450 }
-            }.Concat(commonPath).ToList()
-        };
+        GenerateRiverSystem();
     }
 
+    private void GenerateRiverSystem()
+    {
+        _paths.Clear();
+        var rand = Random.Shared;
+
+        var riverMouth = new Point { X = 1600, Y = 0 };
+
+        var mainRiverStart = new Point
+        {
+            X = 1300 + rand.Next(-50, 50),
+            Y = 400 + rand.Next(-50, 50)
+        };
+
+        var mainRiver = new List<Point>
+    {
+        mainRiverStart,
+        new Point { X = 1400, Y = 400 },
+        new Point { X = 1400, Y = 200 },
+        new Point { X = 1600, Y = 200 },
+        riverMouth
+    };
+
+        var confluence1 = new Point
+        {
+            X = 800 + rand.Next(-50, 50),
+            Y = 300 + rand.Next(-50, 50)
+        };
+
+        var confluence2 = new Point
+        {
+            X = 800 + rand.Next(-50, 50),
+            Y = 600 + rand.Next(-50, 50)
+        };
+
+        var tributary1 = GenerateOrthogonalPath(confluence1, mainRiverStart, true);
+        var tributary2 = GenerateOrthogonalPath(confluence2, mainRiverStart, false);
+
+
+        var sources = new List<(Point pos, Point target, bool horizontal)>
+    {
+        (new Point { X = 0, Y = 150 }, confluence1, true),
+        (new Point { X = 500, Y = 0 }, confluence1, false),
+
+        (new Point { X = 0, Y = 750 }, confluence2, true),
+        (new Point { X = 600, Y = 900 }, confluence2, false),
+
+        (new Point { X = 1100, Y = 900 }, mainRiverStart, false)
+    };
+
+        foreach (var source in sources)
+        {
+            var path = GenerateOrthogonalPath(source.pos, source.target, source.horizontal);
+
+    
+            if (source.target == confluence1)
+            {
+                path.AddRange(tributary1.Skip(1)); 
+                path.AddRange(mainRiver.Skip(1));
+            }
+            else if (source.target == confluence2)
+            {
+                path.AddRange(tributary2.Skip(1));
+                path.AddRange(mainRiver.Skip(1));
+            }
+            else 
+            {
+                path.AddRange(mainRiver.Skip(1));
+            }
+
+            _paths.Add(path);
+        }
+    }
+
+    private List<Point> GenerateOrthogonalPath(
+        Point start,
+        Point target,
+        bool startHorizontal)
+    {
+        var path = new List<Point> { start };
+        var rand = Random.Shared;
+        var current = new Point { X = start.X, Y = start.Y };
+        var isHorizontal = startHorizontal;
+
+        var attempts = 0;
+        while (Distance(current.X, current.Y, target.X, target.Y) > 150 && attempts < 10)
+        {
+            attempts++;
+            Point next;
+
+            if (isHorizontal)
+            {
+                var distance = Math.Min(
+                    rand.Next(150, 350),
+                    Math.Abs(target.X - current.X)
+                );
+                var direction = target.X > current.X ? 1 : -1;
+
+                next = new Point
+                {
+                    X = Math.Clamp(current.X + distance * direction, 50, 1550),
+                    Y = current.Y
+                };
+            }
+            else
+            {
+                var distance = Math.Min(
+                    rand.Next(150, 350),
+                    Math.Abs(target.Y - current.Y)
+                );
+                var direction = target.Y > current.Y ? 1 : -1;
+
+                next = new Point
+                {
+                    X = current.X,
+                    Y = Math.Clamp(current.Y + distance * direction, 50, 850)
+                };
+            }
+
+            if (Math.Abs(next.X - current.X) > 50 ||
+                Math.Abs(next.Y - current.Y) > 50)
+            {
+                path.Add(next);
+                current = next;
+                isHorizontal = !isHorizontal;
+            }
+        }
+
+        if (Math.Abs(current.X - target.X) > 10)
+        {
+            path.Add(new Point { X = target.X, Y = current.Y });
+            current = new Point { X = target.X, Y = current.Y };
+        }
+
+        if (Math.Abs(current.Y - target.Y) > 10)
+        {
+            path.Add(target);
+        }
+
+        return path;
+    }
     private List<int> GetActivePathsForWave(int wave)
     {
         if (wave < 15) return new List<int> { 0 };
         if (wave < 25) return new List<int> { 0, 1 };
-        if (wave < 30) return new List<int> { 0, 1, 2 };
-        return new List<int> { 0, 1, 2, 3 };
+        if (wave < 35) return new List<int> { 0, 1, 2 };
+        if (wave < 45) return new List<int> { 0, 1, 2, 3 };
+        return new List<int> { 0, 1, 2, 3, 4 }; 
     }
 
     private string GetTowerName(TowerType type)
@@ -1253,6 +1349,8 @@
             _effects.Clear();
             _selectedTower = null;
             _selectedTowerForUpgrade = null;
+
+            GenerateRiverSystem();
         }
         _bossWarningTimer?.Dispose();
         StateHasChanged();
